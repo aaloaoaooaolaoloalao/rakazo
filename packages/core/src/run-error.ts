@@ -215,6 +215,12 @@ export function normalizeRunError(
   period?: "none" | "daily" | "weekly" | "monthly";
 } {
   const trimmed = details.trim();
+  if (trimmed === "token_limit" || trimmed.startsWith("token_limit:")) {
+    return { summary: "token_limit", details: trimmed, kind: "token_limit" };
+  }
+  if (trimmed === "provider_unavailable") {
+    return { summary: "provider_unavailable", details: trimmed, kind: "rate" };
+  }
   if ([MODEL_IMAGE_INPUT_ERROR, MODEL_IMAGE_INPUT_UNKNOWN].includes(trimmed)) {
     return {
       summary: translate(trimmed),

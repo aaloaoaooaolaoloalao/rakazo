@@ -4,7 +4,7 @@ import { resolveBotWorkspacePath } from "@rakazo/adapters";
 import type { ExportManifest } from "@rakazo/contracts";
 import { attachmentMaxBytes } from "@rakazo/contracts";
 import { AttachmentValidationError } from "@rakazo/core";
-import { IsolationError, parseComputerMode } from "@rakazo/db";
+import { IsolationError, parseComputerMode, userTokenStatus } from "@rakazo/db";
 import {
   ArtifactListCursorError,
   createOwnedArtifact,
@@ -191,6 +191,11 @@ export function contentRoutes(ctx: RouterContext) {
               (a, b) => (b.totalTokens ?? 0) - (a.totalTokens ?? 0) || b.modelCalls - a.modelCalls,
             ),
         };
+      }),
+    },
+    limits: {
+      status: authed.limits.status.handler(async ({ context }) => {
+        return userTokenStatus(deps.prisma, context.actor.userId);
       }),
     },
     export: {

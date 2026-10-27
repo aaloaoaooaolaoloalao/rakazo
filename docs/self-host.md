@@ -1243,7 +1243,29 @@ This dumps Postgres (`pg_dump`) and archives `data/` into `backups/<stamp>/`. Ba
 directories have mode `0700`, and both artifacts have mode `0600`, including on reused paths.
 A missing `data/` or `RAKAZO_BACKUP_SKIP_HOMES=1` produces an empty archive that restore treats
 as omitted homes. Database or archive errors fail the backup. Discard the output directory of
-any failed run.
+any failed run. The script is not installed as a cron job. To keep a daily copy, the operator
+adds something like `15 3 * * * cd /opt/rakazo && ./scripts/backup.sh` on the host.
+
+## Token and request limits
+
+Each user shares one token budget across all of their agents: `USER_TOKEN_LIMIT_DAILY` (default
+1000000), `USER_TOKEN_LIMIT_MONTHLY` (default 3000000) and `USER_TOKEN_LIMIT_PER_RUN` (default
+250000). `0` disables that window. The day follows the user's timezone, otherwise UTC. A run that
+would cross a cap stops with the code `token_limit`. Parallel runs take a database lock and reserve
+the call before it starts, so they cannot both pass the cap. A call already admitted can still
+finish above its input estimate. That is the only overshoot. `USER_TOKEN_LIMIT_EXEMPT_EMAILS` is a
+comma-separated owner list. `limits/status` returns used, limit and `resetsAt` for the day and the
+month, and never a provider, model or price.
+
+RPC limits use Postgres (`api_rate_buckets`) so they survive a restart and apply to every API
+process. Defaults: 120 per minute per signed-in user, 300 per IP, 20 for `threads/send`,
+`artifacts/create`, `connections/begin`, messaging and voice. The client address is the one
+`TRUSTED_PROXIES` already resolves. A block is HTTP 429 with `Retry-After` and the code
+`RATE_LIMITED`. Health checks are not limited. Sign-in stays on Better Auth.
+
+`MAX_MODEL_CALLS_PER_RUN`, `RUN_WALL_MS` and `MODEL_MAX_OUTPUT_TOKENS` default to 0, which leaves
+the existing caps in place. Repeated provider 429 or 5xx responses open a short circuit and new
+runs fail with `provider_unavailable` instead of retrying in a loop.
 
 ## Public single-VM deployment
 

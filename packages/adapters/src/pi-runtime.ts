@@ -24,6 +24,7 @@ import {
   MODEL_IMAGE_INPUT_ERROR,
   MODEL_OUTPUT_CUT_ERROR,
   modelFallbackFailure,
+  providerCircuit,
 } from "@rakazo/core";
 import { getLogger } from "@rakazo/logging";
 import { uncertainEffectResult } from "./approval-effect.js";
@@ -395,7 +396,10 @@ export class PiAgentRuntime implements AgentRuntime {
                   {
                     ...usageHooks,
                     prepareContext,
-                    onProviderError: (message) => providerFailures.add(message.content),
+                    onProviderError: (message) => {
+                      providerFailures.add(message.content);
+                      providerCircuit.note(message);
+                    },
                   },
                 ),
               target.config.cacheCapabilities?.retentionMode,

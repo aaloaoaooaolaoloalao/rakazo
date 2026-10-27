@@ -37,6 +37,7 @@ export const RUN_ERROR_KINDS = [
   "model",
   "context",
   "output",
+  "token_limit",
 ] as const;
 export type RunErrorKind = (typeof RUN_ERROR_KINDS)[number];
 

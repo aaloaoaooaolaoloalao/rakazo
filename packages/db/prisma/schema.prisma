@@ -1319,6 +1319,29 @@ model UsageRecord {
   @@map("usage_records")
 }
 
+/// Short-lived reservation so parallel runs cannot both pass a token cap.
+model TokenBudgetHold {
+  id        String   @id @default(cuid())
+  userId    String
+  runId     String
+  callId    String   @unique
+  tokens    Int
+  createdAt DateTime @default(now())
+
+  @@index([userId, createdAt])
+  @@map("token_budget_holds")
+}
+
+/// Fixed one-minute windows. Shared by every API process.
+model ApiRateBucket {
+  key         String
+  windowStart DateTime
+  count       Int      @default(0)
+
+  @@id([key, windowStart])
+  @@map("api_rate_buckets")
+}
+
 model NotificationPreference {
   id       String  @id @default(cuid())
   spaceId  String
