@@ -81,10 +81,15 @@ vi.mock("./SpaceSettingsPanel", () => ({
     </button>
   ),
 }));
-const { scopes, recordScope } = vi.hoisted(() => {
+const { scopes, recordScope, productUiFlags } = vi.hoisted(() => {
   const scopes: string[] = [];
+  const productUiFlags = {
+    hideUserModelSettings: false,
+    hideUserVoiceSettings: false,
+  };
   return {
     scopes,
+    productUiFlags,
     recordScope:
       (name: string) =>
       ({ scope }: { scope: string }) => {
@@ -93,6 +98,7 @@ const { scopes, recordScope } = vi.hoisted(() => {
       },
   };
 });
+vi.mock("../product-ui", () => ({ PRODUCT_UI: productUiFlags }));
 vi.mock("./ModelSettingsOverlay", () => ({ ModelSettingsOverlay: recordScope("models") }));
 vi.mock("./VoiceSettingsOverlay", () => ({ VoiceSettingsOverlay: recordScope("voice") }));
 vi.mock("../components/ApprovalRulesSettings", () => ({
@@ -229,6 +235,25 @@ it("opens a linked billing section once billing turns out to be on", async () =>
     await rerender({ section: "billing", billingEnabled: true });
     expect(shown()).toBe("billing");
   } finally {
+    await cleanup();
+  }
+});
+
+it("hides models and voice in the nav when the product flags are on", async () => {
+  productUiFlags.hideUserModelSettings = true;
+  productUiFlags.hideUserVoiceSettings = true;
+  const { container, rerender, cleanup } = await render({ section: "models" });
+  const shown = () =>
+    container.querySelector("[data-settings-section]")?.getAttribute("data-settings-section");
+  try {
+    expect(container.querySelector('[data-testid="settings-nav-models"]')).toBeNull();
+    expect(container.querySelector('[data-testid="settings-nav-voice"]')).toBeNull();
+    expect(shown()).toBe("general");
+    await rerender({ section: "voice" });
+    expect(shown()).toBe("general");
+  } finally {
+    productUiFlags.hideUserModelSettings = false;
+    productUiFlags.hideUserVoiceSettings = false;
     await cleanup();
   }
 });

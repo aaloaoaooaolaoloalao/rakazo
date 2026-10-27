@@ -38,6 +38,7 @@ import { ModelSettingsOverlay } from "./ModelSettingsOverlay";
 import { SpaceSettingsPanel } from "./SpaceSettingsPanel";
 import type { SettingsSpace } from "./shell/dialogs";
 import type { SettingsSection } from "./shell-overlay";
+import { PRODUCT_UI } from "../product-ui";
 import { VoiceSettingsOverlay } from "./VoiceSettingsOverlay";
 
 type NavItem = {
@@ -105,12 +106,16 @@ export function SettingsOverlay({
   const recoveryHoldTimer = useRef<number | undefined>(undefined);
   const showComputer = keepComputerRecovery || computersAreUnavailable(sandboxProvider);
   const showUpdates = Boolean(desktopBridge()?.update);
+  const showModels = !PRODUCT_UI.hideUserModelSettings;
+  const showVoice = !PRODUCT_UI.hideUserVoiceSettings;
   // A section that isn't available yet (billing before its flag loads) shows General until it is.
   const section =
     (requestedSection === "computer" && !showComputer) ||
     (requestedSection === "billing" && !billingEnabled) ||
     (requestedSection === "messaging" && !messagingEnabled) ||
-    (requestedSection === "updates" && !showUpdates)
+    (requestedSection === "updates" && !showUpdates) ||
+    (requestedSection === "models" && !showModels) ||
+    (requestedSection === "voice" && !showVoice)
       ? "general"
       : requestedSection;
   const panelBusy = memoryBusy || voiceBusy;
@@ -145,8 +150,8 @@ export function SettingsOverlay({
 
   const navItems: NavItem[] = [
     { id: "general", label: t`General`, icon: Settings },
-    { id: "models", label: t`Models`, icon: Cpu },
-    { id: "voice", label: t`Voice`, icon: Volume2 },
+    ...(showModels ? [{ id: "models" as const, label: t`Models`, icon: Cpu }] : []),
+    ...(showVoice ? [{ id: "voice" as const, label: t`Voice`, icon: Volume2 }] : []),
     { id: "confirmations", label: t`Approvals`, icon: ShieldCheck },
     { id: "vault", label: t`Vault`, icon: KeyRound },
     ...(messagingEnabled
@@ -187,7 +192,7 @@ export function SettingsOverlay({
       nav.removeEventListener("scroll", measure);
       observer?.disconnect();
     };
-  }, [section, showComputer, billingEnabled, messagingEnabled, showUpdates, i18n.locale]);
+  }, [section, showComputer, billingEnabled, messagingEnabled, showUpdates, showModels, showVoice, i18n.locale]);
 
   function scrollSections(direction: number) {
     const nav = navRef.current;
@@ -413,7 +418,7 @@ export function SettingsOverlay({
                   ) : null}
                   {section === "billing" && billingEnabled ? <BillingSettingsPanel /> : null}
                   {section === "updates" && showUpdates ? <UpdatesSettingsPanel /> : null}
-                  {section === "models" ? (
+                  {section === "models" && showModels ? (
                     <ModelSettingsOverlay embedded scope="account" onClose={requestClose} />
                   ) : null}
                   {section === "memory" ? (
@@ -425,7 +430,7 @@ export function SettingsOverlay({
                       onBusyChange={setMemoryBusy}
                     />
                   ) : null}
-                  {section === "voice" ? (
+                  {section === "voice" && showVoice ? (
                     <VoiceSettingsOverlay
                       embedded
                       scope="account"
