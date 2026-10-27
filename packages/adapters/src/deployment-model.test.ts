@@ -1,5 +1,5 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
-import { resolveDeploymentModel } from "./deployment-model.js";
+import { DEFAULT_MISTRAL_MODEL_ID, resolveDeploymentModel } from "./deployment-model.js";
 
 // Host credentials come from the process, so blank the ones a developer machine or CI
 // host may carry; each case states its own.
@@ -88,6 +88,29 @@ describe("resolveDeploymentModel", () => {
       hostCredentials: true,
       key: undefined,
     });
+  });
+
+  it("reads DEFAULT_MODEL_* aliases and pairs Mistral with MISTRAL_API_KEY", () => {
+    expect(
+      resolveDeploymentModel({
+        DEFAULT_MODEL_PROVIDER: "mistral",
+        DEFAULT_MODEL_ID: "mistral-small-latest",
+        MISTRAL_API_KEY: "mistral-deployment-key",
+        OPENROUTER_API_KEY: "or-key",
+      }),
+    ).toEqual({
+      provider: "mistral",
+      model: "mistral-small-latest",
+      key: "mistral-deployment-key",
+      configured: true,
+      hostCredentials: false,
+    });
+    expect(
+      resolveDeploymentModel({
+        DEFAULT_MODEL_PROVIDER: "mistral",
+        MISTRAL_API_KEY: "mistral-deployment-key",
+      }).model,
+    ).toBe(DEFAULT_MISTRAL_MODEL_ID);
   });
 
   it("does not assume host authentication for other providers", () => {

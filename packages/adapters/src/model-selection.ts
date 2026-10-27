@@ -871,5 +871,19 @@ export async function hasHostedModelCredits(
     where: { id: scope.spaceId, organization: { members: { some: { userId: scope.userId } } } },
     select: { organization: { select: { modelCredits: { select: { mode: true } } } } },
   });
-  return space?.organization.modelCredits?.mode === "credits";
+  const mode = space?.organization.modelCredits?.mode;
+  if (mode === "credits") return true;
+  if (mode === "byok") return false;
+  // Self-hosted and other installs without Rakazo credits: the operator's deployment key.
+  return Boolean(deployment.key) || deployment.hostCredentials;
+}
+
+/** Provider whose models are funded by the deployment key for catalog and validation. */
+export async function catalogHostedProvider(
+  prisma: PrismaClient,
+  scope: { userId: string; spaceId: string },
+): Promise<string | undefined> {
+  const deployment = resolveDeploymentModel();
+  if (!(await hasHostedModelCredits(prisma, scope, deployment.provider))) return undefined;
+  return deployment.provider;
 }

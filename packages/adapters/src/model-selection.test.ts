@@ -5,6 +5,7 @@ import type { PrismaClient } from "@rakazo/db";
 import { describe, expect, it, vi } from "vitest";
 import { selectConfiguredModel } from "./model-roles.js";
 import {
+  catalogHostedProvider,
   connectionServesModel,
   defaultCatalogModelId,
   enabledOpenAiCompatibleModelIds,
@@ -229,6 +230,28 @@ describe("space catalog auth", () => {
       (entry) => entry.provider === "openai-codex" && entry.id === spark,
     );
   }
+
+  it("funds the configured deployment provider without Rakazo credits", async () => {
+    vi.stubEnv("DEFAULT_MODEL_PROVIDER", "mistral");
+    vi.stubEnv("MISTRAL_API_KEY", "fixture-mistral-deployment-key");
+    try {
+      const { prisma } = authPrisma({ credentials: [], preferences: [], secrets: [] });
+      Object.assign(prisma, {
+        space: {
+          findFirst: vi.fn().mockResolvedValue({
+            organization: { modelCredits: null },
+          }),
+        },
+      });
+      const hosted = await catalogHostedProvider(prisma, scope);
+      expect(hosted).toBe("mistral");
+      const auth = await modelCredentialAuthKindsForSpace(prisma, { load: vi.fn() }, scope, hosted);
+      expect(auth.managedProvider).toBe("mistral");
+      expect(auth.byProvider.mistral).toBe("api_key");
+    } finally {
+      vi.unstubAllEnvs();
+    }
+  });
 
   it.each(["credits", "byok"])("keeps saved keys while selecting %s funding", async (mode) => {
     vi.stubEnv("PI_DEFAULT_PROVIDER", "openrouter");

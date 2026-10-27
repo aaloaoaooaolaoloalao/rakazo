@@ -23,6 +23,7 @@ import {
 } from "./model-credit-observer.js";
 import { resolveMemberMainModel, selectConfiguredModel } from "./model-roles.js";
 import {
+  catalogHostedProvider,
   enabledOpenAiCompatibleModelIds,
   findConnectedModelCredential,
   hasHostedModelCredits,
@@ -90,9 +91,7 @@ export function fleetPrepareDeps(
           override: null,
           overrideCredential: null,
           main,
-          hostedProvider: (await modelCreditBillingEnabled(deps))
-            ? resolveDeploymentModel().provider
-            : undefined,
+          hostedProvider: await catalogHostedProvider(deps.prisma, scope),
           defaults: {
             settings,
             deployment: deps.deploymentModelConfigured ? resolveDeploymentModel() : null,
@@ -403,9 +402,7 @@ export async function resolveConnectedRunModel(
   /** The connection a role row is pinned to. */
   credentialId?: string,
 ): Promise<AgentRunRequest["model"]> {
-  const hostedProvider = (await modelCreditBillingEnabled(deps))
-    ? resolveDeploymentModel().provider
-    : undefined;
+  const hostedProvider = await catalogHostedProvider(deps.prisma, scope);
   const validationError = await validateConnectedModelChoice(
     deps.prisma,
     deps.secretStore,
@@ -423,10 +420,7 @@ export async function resolveConnectedRunModel(
     modelId,
     { credentialId },
   );
-  if (
-    !credential &&
-    !((await modelCreditBillingEnabled(deps)) && provider === resolveDeploymentModel().provider)
-  )
+  if (!credential && !(await hasHostedModelCredits(deps.prisma, scope, provider)))
     throw new Error(PINNED_PROVIDER_NOT_CONNECTED);
   const resolved = await resolveModelKey(
     deps,
@@ -511,9 +505,7 @@ export async function resolveRunModel(
     override,
     overrideCredential,
     main,
-    hostedProvider: (await modelCreditBillingEnabled(deps))
-      ? resolveDeploymentModel().provider
-      : undefined,
+    hostedProvider: await catalogHostedProvider(deps.prisma, scope),
     defaults: {
       settings,
       deployment: deps.deploymentModelConfigured ? resolveDeploymentModel() : null,
