@@ -93,7 +93,7 @@ import {
 import { createAuth, isBlockedAuthPath, loopbackTwinOrigins } from "@rakazo/auth";
 import type { Actor, AuthCapabilities } from "@rakazo/contracts";
 import { isLocalhostOrLoopbackIp, SERVER_BUILD_HEADER } from "@rakazo/contracts";
-import { signupPolicyFromEnv } from "@rakazo/core";
+import { autoProvisionNewUsersEnabled, signupPolicyFromEnv } from "@rakazo/core";
 import type { Pool, PrismaClient } from "@rakazo/db";
 import {
   createBoardEvents,
@@ -102,6 +102,7 @@ import {
   createSecurityEventPruner,
   createThreadEvents,
   describeRowSecurity,
+  ensureAutoProvisionedUser,
   IsolationError,
   installSecurityEventStore,
   ProviderTransactionBusyError,
@@ -534,6 +535,15 @@ async function buildApp(overrides: CreateAppOverrides): Promise<AppHandles> {
         .endSession(session.userId, previous.id, session.id)
         .catch((error) => getLogger().error("push token session update failed", error));
     },
+    ensureUserProvisioned: autoProvisionNewUsersEnabled(process.env)
+      ? async (user, spaceId) => {
+          try {
+            await ensureAutoProvisionedUser(prisma, user, spaceId, process.env);
+          } catch (error) {
+            getLogger().error("auto-provision failed", error);
+          }
+        }
+      : undefined,
   });
   const oauthTokenUpgrade = auth
     .encryptStoredOAuthTokens()

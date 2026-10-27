@@ -63,6 +63,11 @@ export interface AuthEnv {
   afterDeleteSession?: (session: AuthSession) => Promise<void>;
   /** Runs when a password change replaces the caller's own session instead of ending it. */
   afterReplaceSession?: (previous: AuthSession, session: AuthSession) => Promise<void>;
+  /**
+   * After the personal space exists, ensure a default bot/computer record for chat.
+   * Failures must not block sign-in; the host should log and retry on later sessions.
+   */
+  ensureUserProvisioned?: (user: { id: string; email: string }, spaceId: string) => Promise<void>;
 }
 
 type AuthSession = { id: string; userId: string };
@@ -487,8 +492,11 @@ export function createAuth(prisma: PrismaClient, env: AuthEnv) {
               });
             }
             // Only admitted sessions provision a workspace; never assign administration.
-            const membership = await prisma.spaceMember.findFirst({ where: { userId: user.id } });
-            if (!membership) {
+            const membership = await prisma.spaceMember.findFirst({
+              where: { userId: user.id },
+            });
+            let spaceId = membership?.spaceId;
+            if (!spaceId) {
               if (
                 !policy.enabled ||
                 (!bypassAllowlist && !emailAllowed(user.email, policy.allowlist))
@@ -498,7 +506,14 @@ export function createAuth(prisma: PrismaClient, env: AuthEnv) {
                   message: "Registration is closed",
                 });
               }
-              await bootstrapUserSpace(prisma, user, env);
+              spaceId = (await bootstrapUserSpace(prisma, user, env)).spaceId;
+            }
+            if (env.ensureUserProvisioned) {
+              try {
+                await env.ensureUserProvisioned({ id: user.id, email: user.email }, spaceId);
+              } catch {
+                // Provisioning retries on a later sign-in; admission must not fail here.
+              }
             }
           },
           after: async (session, ctx) => {
