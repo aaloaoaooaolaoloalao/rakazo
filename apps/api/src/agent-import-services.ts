@@ -32,9 +32,7 @@ export function createAgentImportServices({
   repos: ReturnType<typeof createRepos>;
   codexCatalog: CodexLiveCatalog;
   verifyModelConnection: ReturnType<typeof createModelConnector>["verifyModelConnection"];
-  botModelValidation: (
-    actor: Actor,
-  ) => Promise<Parameters<typeof validateBotModelChange>[0]>;
+  botModelValidation: (actor: Actor) => Promise<Parameters<typeof validateBotModelChange>[0]>;
   prepareMcpServer: ReturnType<typeof createMcpServers>["prepareMcpServer"];
   insertMcpServer: ReturnType<typeof createMcpServers>["insertMcpServer"];
   announceRoutine: ReturnType<typeof createRoutineAnnouncer>;

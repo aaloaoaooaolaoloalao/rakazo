@@ -1,8 +1,5 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
-import {
-  DEFAULT_MISTRAL_MODEL_ID,
-  resolveDeploymentModel,
-} from "./deployment-model.js";
+import { DEFAULT_MISTRAL_MODEL_ID, resolveDeploymentModel } from "./deployment-model.js";
 
 // Host credentials come from the process, so blank the ones a developer machine or CI
 // host may carry; each case states its own.

@@ -5,6 +5,7 @@ import type { PrismaClient } from "@rakazo/db";
 import { describe, expect, it, vi } from "vitest";
 import { selectConfiguredModel } from "./model-roles.js";
 import {
+  catalogHostedProvider,
   connectionServesModel,
   defaultCatalogModelId,
   enabledOpenAiCompatibleModelIds,
@@ -242,7 +243,9 @@ describe("space catalog auth", () => {
           }),
         },
       });
-      const auth = await modelCredentialAuthKindsForSpace(prisma, { load: vi.fn() }, scope);
+      const hosted = await catalogHostedProvider(prisma, scope);
+      expect(hosted).toBe("mistral");
+      const auth = await modelCredentialAuthKindsForSpace(prisma, { load: vi.fn() }, scope, hosted);
       expect(auth.managedProvider).toBe("mistral");
       expect(auth.byProvider.mistral).toBe("api_key");
     } finally {

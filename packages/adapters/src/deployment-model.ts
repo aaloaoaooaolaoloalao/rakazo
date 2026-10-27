@@ -6,11 +6,7 @@ export const DEFAULT_OPENROUTER_MODEL_ID = "openai/gpt-6-luna";
 export const DEFAULT_MISTRAL_MODEL_ID = "mistral-medium-latest";
 
 function deploymentProviderFromEnv(env: NodeJS.ProcessEnv): string {
-  return (
-    env.DEFAULT_MODEL_PROVIDER?.trim() ||
-    env.PI_DEFAULT_PROVIDER?.trim() ||
-    "openrouter"
-  );
+  return env.DEFAULT_MODEL_PROVIDER?.trim() || env.PI_DEFAULT_PROVIDER?.trim() || "openrouter";
 }
 
 function deploymentModelFromEnv(env: NodeJS.ProcessEnv): string | undefined {

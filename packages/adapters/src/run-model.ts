@@ -23,13 +23,12 @@ import {
 } from "./model-credit-observer.js";
 import { resolveMemberMainModel, selectConfiguredModel } from "./model-roles.js";
 import {
+  catalogHostedProvider,
   enabledOpenAiCompatibleModelIds,
   findConnectedModelCredential,
   hasHostedModelCredits,
   PINNED_PROVIDER_NOT_CONNECTED,
   UnavailableModelForAuthError,
-  catalogHostedProvider,
-  hasHostedModelCredits,
   validateConnectedModelChoice,
   validateModelAuthAvailability,
 } from "./model-selection.js";
