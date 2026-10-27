@@ -9,6 +9,7 @@ import {
   createFaviconResolver,
   decisionModelCatalog,
   deploymentModelRole,
+  catalogHostedProvider,
   findConnectedModelCredential,
   hiddenCatalogModel,
   kickModelCredentialRefresh,
@@ -109,12 +110,12 @@ export function createRouterContext(deps: RouterDeps) {
     deps.refreshExpiredModelCredential ??
     ((scope: { userId: string; spaceId: string }, secretId: string, provider: string) =>
       kickModelCredentialRefresh(deps.prisma, deps.secrets, scope, secretId, provider));
-  const botModelValidation = (actor: Actor) => ({
+  const botModelValidation = async (actor: Actor) => ({
     prisma: deps.prisma,
     secretStore: deps.secrets,
     codexCatalog,
     refreshExpiredCredential,
-    hostedProvider: deps.billing?.modelCreditsEnabled ? deps.env.defaultProvider : undefined,
+    hostedProvider: await catalogHostedProvider(deps.prisma, actor),
     defaultModel: async () => {
       const me = await meDto(deps, actor);
       return { provider: me.defaultProvider, model: me.defaultModel };
@@ -144,7 +145,7 @@ export function createRouterContext(deps: RouterDeps) {
       deps.prisma,
       deps.secrets,
       actor,
-      deps.billing?.modelCreditsEnabled ? deps.env.defaultProvider : undefined,
+      await catalogHostedProvider(deps.prisma, actor),
     );
     const available = listAvailablePiCatalog(auth.byProvider, auth.byModel);
     const [live, providerLive] = await Promise.all([

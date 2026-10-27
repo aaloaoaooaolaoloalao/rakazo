@@ -1,6 +1,6 @@
 import { ORPCError } from "@orpc/server";
 import { runContinueJob, runJobKey } from "@rakazo/adapter-kit";
-import { settleCallRequest } from "@rakazo/adapters";
+import { catalogHostedProvider, settleCallRequest } from "@rakazo/adapters";
 import type { ProductEvent } from "@rakazo/contracts";
 import {
   CALL_CLIENT_NONCE_PREFIX,
@@ -170,7 +170,9 @@ export function threadsRoutes(ctx: RouterContext) {
               ? {
                   secrets: deps.secrets,
                   deployment,
-                  hostedProvider: funding?.funding === "credits" ? deployment?.provider : undefined,
+                  hostedProvider: deployment
+                    ? await catalogHostedProvider(deps.prisma, context.actor)
+                    : undefined,
                 }
               : undefined,
           },

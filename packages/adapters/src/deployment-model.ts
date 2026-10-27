@@ -3,6 +3,20 @@ import type { ModelUsageLookup } from "@rakazo/adapter-kit";
 import { OpenRouterUsageLookup } from "./openrouter-usage.js";
 
 export const DEFAULT_OPENROUTER_MODEL_ID = "openai/gpt-6-luna";
+export const DEFAULT_MISTRAL_MODEL_ID = "mistral-medium-latest";
+
+function deploymentProviderFromEnv(env: NodeJS.ProcessEnv): string {
+  return (
+    env.DEFAULT_MODEL_PROVIDER?.trim() ||
+    env.PI_DEFAULT_PROVIDER?.trim() ||
+    "openrouter"
+  );
+}
+
+function deploymentModelFromEnv(env: NodeJS.ProcessEnv): string | undefined {
+  const explicit = env.DEFAULT_MODEL_ID?.trim() || env.PI_DEFAULT_MODEL?.trim();
+  return explicit || undefined;
+}
 
 /**
  * What Pi reports for a provider that authenticates from the host instead of a key: an AWS
@@ -32,19 +46,21 @@ export function hostCredentialSource(provider: string): string {
  * Vendor env names and model ids live here, in the adapter layer, not in core.
  */
 export function resolveDeploymentModel(env: NodeJS.ProcessEnv = process.env) {
-  const provider = env.PI_DEFAULT_PROVIDER?.trim() || "openrouter";
+  const provider = deploymentProviderFromEnv(env);
   // A row per provider that ships a deployment key. A third one adds a row here, not a
   // branch at each call site — and an unknown provider gets no key rather than another
   // vendor's, which a ternary on one provider would not give.
   const keys: Record<string, string | undefined> = {
     openrouter: env.OPENROUTER_API_KEY,
     anthropic: env.ANTHROPIC_API_KEY,
+    mistral: env.MISTRAL_API_KEY,
   };
   const models: Record<string, string> = {
     openrouter: DEFAULT_OPENROUTER_MODEL_ID,
     anthropic: "claude-sonnet-5",
+    mistral: DEFAULT_MISTRAL_MODEL_ID,
   };
-  const explicitModel = env.PI_DEFAULT_MODEL?.trim();
+  const explicitModel = deploymentModelFromEnv(env);
   const key = keys[provider];
   const hostCredentials =
     !key &&

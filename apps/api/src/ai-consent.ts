@@ -2,6 +2,7 @@ import { createHash } from "node:crypto";
 import { ORPCError } from "@orpc/server";
 import {
   aiRecipient,
+  catalogHostedProvider,
   cloudAgentsEnabled,
   parseModelSecret,
   resolveMemberMainModel,
@@ -133,7 +134,7 @@ export async function aiConsentStatus(
           override,
           overrideCredential,
           main,
-          hostedProvider: deps.billing?.modelCreditsEnabled ? deps.env.defaultProvider : undefined,
+          hostedProvider: await catalogHostedProvider(deps.prisma, actor),
           defaults: { settings, deployment },
         });
       }),

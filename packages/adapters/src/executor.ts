@@ -93,6 +93,7 @@ import {
   selectConfiguredModel,
 } from "./model-roles.js";
 import {
+  catalogHostedProvider,
   findConnectedModelCredential,
   PINNED_PROVIDER_NOT_CONNECTED,
   pinnedModelCredentialError,
@@ -693,21 +694,21 @@ export function createRunExecutor(deps: ExecutorDeps) {
         }
         const runDeployment = deps.deploymentModelConfigured ? resolveDeploymentModel() : null;
         const runtimeFallback = runtimeFallbackModel(deps.runtime);
+        const runScope = { userId: run.userId, spaceId: run.spaceId };
+        const hostedProvider = await catalogHostedProvider(deps.prisma, runScope);
+        const deploymentHostedPin =
+          Boolean(runDeployment) &&
+          modelChoice.modelProvider === runDeployment?.provider &&
+          hostedProvider === runDeployment?.provider;
         const pinError =
-          run.modelPinned &&
-          !(
-            (await modelCreditBillingEnabled(deps)) &&
-            modelChoice.modelProvider === runDeployment?.provider
-          )
+          run.modelPinned && !deploymentHostedPin
             ? pinnedModelCredentialError(modelChoice, overrideCredential)
             : undefined;
         const selected = selectConfiguredModel({
           override: modelChoice,
           overrideCredential,
           main,
-          hostedProvider: (await modelCreditBillingEnabled(deps))
-            ? resolveDeploymentModel().provider
-            : undefined,
+          hostedProvider,
           defaults: { settings, deployment: runDeployment },
         });
         const { credential, thinkingLevel } = selected;
