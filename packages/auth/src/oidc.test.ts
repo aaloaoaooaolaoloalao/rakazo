@@ -61,7 +61,9 @@ function setup(options: Partial<AuthEnv> = {}, hasMembership = true) {
       updateMany: vi.fn(async () => ({ count: 1 })),
     },
     spaceMember: {
-      findFirst: vi.fn(async () => (hasMembership ? { id: "existing-space" } : null)),
+      findFirst: vi.fn(async () =>
+        hasMembership ? { id: "existing-space", spaceId: "existing-space" } : null,
+      ),
     },
     member: { findMany: vi.fn(async () => []) },
     messagingIdentity: { deleteMany: vi.fn(async () => ({})) },
