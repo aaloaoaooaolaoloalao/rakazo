@@ -22,7 +22,7 @@ async function countLiveComputersForUser(prisma: PrismaClient, userId: string): 
   return prisma.computer.count({
     where: {
       userId,
-      bot: { archivedAt: null },
+      bots: { some: { archivedAt: null } },
     },
   });
 }
