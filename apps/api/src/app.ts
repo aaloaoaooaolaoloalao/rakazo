@@ -53,6 +53,7 @@ import {
   deploymentModelUsageLookup,
   EmailEmulator,
   ExpoPushProvider,
+  RoutedPushProvider,
   GraphileJobPublisher,
   InMemoryJobQueue,
   InMemoryRealtimeFanout,
@@ -476,13 +477,12 @@ async function buildApp(overrides: CreateAppOverrides): Promise<AppHandles> {
           sessionRoot: env.piSessionRecording ? piSessionsRoot(env.dataDir) : undefined,
         }));
   const pushTokens = new PrismaPushTokenStore(prisma, env.encryptionKey);
-  const notifications =
-    notificationsOverride ??
-    new ExpoPushProvider(pushTokens, {
-      sessionExpiresAt: (sessionId) => pushSessionExpiresAt(prisma, sessionId),
-      jobs,
-      accessToken: env.expoAccessToken,
-    });
+  const expoPush = new ExpoPushProvider(pushTokens, {
+    sessionExpiresAt: (sessionId) => pushSessionExpiresAt(prisma, sessionId),
+    jobs,
+    accessToken: env.expoAccessToken,
+  });
+  const notifications = notificationsOverride ?? new RoutedPushProvider(expoPush, pushTokens);
   const auth = createAuth(prisma, {
     analytics,
     passwordAuth: env.passwordAuth,
@@ -629,7 +629,11 @@ async function buildApp(overrides: CreateAppOverrides): Promise<AppHandles> {
     events,
     workerId: "api",
     runtime,
-    notifications: notifications instanceof ExpoPushProvider ? notifications : undefined,
+    notifications: notificationsOverride
+      ? notifications instanceof ExpoPushProvider
+        ? notifications
+        : undefined
+      : expoPush,
     secretStore: secrets,
     memoryProviders,
     deploymentModelKey: env.deploymentModelKey,
