@@ -20,8 +20,18 @@ export type ComputerKeyInput = {
   botId?: string;
 };
 
+/** One shared team computer per user (all spaces). */
+export function userTeamScopeKey(userId: string) {
+  return `team:user:${userId}`;
+}
+
+/** Per-space team key on rows created before the per-user shared computer. */
+export function legacyTeamScopeKey(spaceId: string, userId: string) {
+  return `team:${spaceId}:${userId}`;
+}
+
 export function computerScopeKey(input: ComputerKeyInput) {
-  if (input.mode === "team") return `team:${input.spaceId}:${input.userId}`;
+  if (input.mode === "team") return userTeamScopeKey(input.userId);
   if (!input.botId) throw new Error("Dedicated computers require a bot id");
   return `bot:${input.botId}`;
 }
@@ -35,7 +45,7 @@ export function computerScopeKey(input: ComputerKeyInput) {
 export function computerHomeKey(input: ComputerKeyInput) {
   if (input.mode === "team") {
     const digest = createHash("sha256")
-      .update(`${input.spaceId}:${input.userId}`)
+      .update(input.userId)
       .digest("hex")
       .slice(0, 32);
     return `team-${digest}`;
@@ -76,9 +86,17 @@ export function resolveMaxComputersPerUser(
   return limit;
 }
 
+/** New bot/computer routes always use the shared team computer (legacy dedicated rows stay as-is). */
+export function normalizeComputerMode(_mode?: ComputerMode): ComputerMode {
+  return "team";
+}
+
+export const computerLimitUserMessage =
+  "כבר יש לך מחשב פעיל. כל הבוטים שלך משתמשים באותו מחשב, ולא ניתן לפתוח מחשב נוסף.";
+
 export class ComputerLimitError extends Error {
-  constructor(limit: number) {
-    super(`User computer limit (${limit}) reached`);
+  constructor(_limit: number) {
+    super(computerLimitUserMessage);
     this.name = "ComputerLimitError";
   }
 }
@@ -223,6 +241,21 @@ function upsertComputerRecord(
   });
 }
 
+async function findExistingTeamComputer(
+  tx: ComputerTx,
+  userId: string,
+  unifiedScopeKey: string,
+) {
+  const byKey = await tx.computer.findUnique({
+    where: { scopeKey: unifiedScopeKey },
+  });
+  if (byKey) return byKey;
+  return tx.computer.findFirst({
+    where: { userId, scope: "team" },
+    orderBy: { createdAt: "asc" },
+  });
+}
+
 async function ensureComputerRecordWithQuota(
   tx: ComputerTx,
   input: {
@@ -239,10 +272,15 @@ async function ensureComputerRecordWithQuota(
   // Only a new row consumes quota: the upsert below reuses the user's team
   // computer on every bot they create in that space, and reusing it with the count
   // already at the cap would wrongly refuse a second bot on a shared computer.
-  const existing = await tx.computer.findUnique({
-    where: { scopeKey },
-    select: { id: true },
-  });
+  const existing =
+    input.mode === "team"
+      ? await findExistingTeamComputer(tx, input.userId, scopeKey)
+      : await tx.computer.findUnique({
+          where: { scopeKey },
+        });
+  if (existing) {
+    if (input.mode === "team") return existing;
+  }
   if (!existing) {
     // The bot being linked to this new computer is part of this same
     // transaction; its old or intermediate reference is leaving the live set

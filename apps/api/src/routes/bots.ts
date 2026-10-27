@@ -32,6 +32,8 @@ import {
   BotSectionNameConflictError,
   botProfileLabelsChanged,
   ComputerLimitError,
+  computerLimitUserMessage,
+  normalizeComputerMode,
   commitBotUpdate,
   InstructionConflictError,
   IsolationError,
@@ -63,7 +65,7 @@ function mapSpaceLifecycleError(error: unknown): unknown {
     return new ORPCError("CONFLICT", { message: error.message });
   }
   if (error instanceof ComputerLimitError) {
-    return new ORPCError("BAD_REQUEST", { message: error.message });
+    return new ORPCError("BAD_REQUEST", { message: computerLimitUserMessage });
   }
   return error;
 }
@@ -264,7 +266,10 @@ export function botsRoutes(ctx: RouterContext) {
       create: authed.bots.create.handler(async ({ context, input }) => {
         let bot: Bot;
         try {
-          bot = await repos.createBot(context.actor, input);
+          bot = await repos.createBot(context.actor, {
+            ...input,
+            computerMode: normalizeComputerMode(input.computerMode),
+          });
         } catch (error) {
           throw mapSpaceLifecycleError(error);
         }
@@ -305,7 +310,7 @@ export function botsRoutes(ctx: RouterContext) {
             instructions: source.instructions,
             notifyOnFinish: source.notifyOnFinish,
             color: source.color,
-            computerMode: source.computer?.scope === "dedicated" ? "dedicated" : "team",
+            computerMode: normalizeComputerMode("team"),
             modelProvider: source.modelProvider,
             modelId: source.modelId,
             thinkingLevel: source.thinkingLevel,
@@ -434,12 +439,13 @@ export function botsRoutes(ctx: RouterContext) {
         return (await repos.listBots(context.actor)).find((bot) => bot.id === input.botId)!;
       }),
       setComputer: authed.bots.setComputer.handler(async ({ context, input }) => {
+        const requestedMode = normalizeComputerMode(input.mode);
         const bot = await repos.getBot(context.actor, input.botId);
         if (!bot.computer) throw new IsolationError();
         const currentMode = bot.computer.scope === "dedicated" ? "dedicated" : "team";
-        if (currentMode === input.mode) {
+        if (currentMode === requestedMode && currentMode === "team") {
           try {
-            return await repos.setBotComputer(context.actor, bot.id, input.mode);
+            return await repos.setBotComputer(context.actor, bot.id, requestedMode);
           } catch (error) {
             throw mapSpaceLifecycleError(error);
           }
@@ -488,7 +494,7 @@ export function botsRoutes(ctx: RouterContext) {
             });
             await recordComputerRunEnd(deps.prisma, bot.computer, "stopped");
           }
-          return await repos.setBotComputer(context.actor, bot.id, input.mode);
+          return await repos.setBotComputer(context.actor, bot.id, requestedMode);
         } catch (error) {
           throw mapSpaceLifecycleError(error);
         } finally {
