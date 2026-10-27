@@ -53,6 +53,12 @@ export async function recordUsage(
   };
   return prisma.$transaction(async (tx) => {
     await tx.usageRecord.createMany({ data: [data], skipDuplicates: true });
+    const holds = (
+      tx as unknown as {
+        tokenBudgetHold?: { deleteMany: (args: { where: { callId: string } }) => Promise<unknown> };
+      }
+    ).tokenBudgetHold;
+    if (event.callId && holds) await holds.deleteMany({ where: { callId: event.callId } });
     const entry = event.callId
       ? await tx.modelCreditEntry.findUnique({ where: { callId: event.callId } })
       : null;

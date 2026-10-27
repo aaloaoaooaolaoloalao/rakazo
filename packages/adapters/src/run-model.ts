@@ -13,6 +13,7 @@ import {
 } from "@rakazo/contracts";
 import { MISSING_MODEL_RUN_ERROR } from "@rakazo/core";
 import { retireModelCredential } from "@rakazo/db";
+import { withTokenBudget } from "./token-budget-observer.js";
 import { cloudflareProviderEnv } from "./cloudflare-ai-gateway.js";
 import { resolveDeploymentModel } from "./deployment-model.js";
 import type { ExecutorDeps } from "./executor-deps.js";
@@ -175,8 +176,11 @@ export async function resolveModelKey(...args: Parameters<typeof resolveModelKey
   if (!material.apiKey?.trim() && !runtimeKey?.trim() && !keyless) {
     throw new UnavailableModelForAuthError(MISSING_MODEL_RUN_ERROR);
   }
-  const callObserver =
-    !credential && billingEnabled ? await hostedModelCreditObserver(deps.prisma, scope) : undefined;
+  const callObserver = withTokenBudget(
+    deps.prisma,
+    userId,
+    !credential && billingEnabled ? await hostedModelCreditObserver(deps.prisma, scope) : undefined,
+  );
   return { ...material, apiKey: material.apiKey ?? runtimeKey, callObserver };
 }
 
