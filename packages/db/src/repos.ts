@@ -616,16 +616,6 @@ export function createRepos(
               markUnread: false,
             });
           }
-          if (input.computerMode === "dedicated") {
-            const dedicated = await ensureComputerRecord(tx, {
-              mode: "dedicated",
-              spaceId: actor.spaceId,
-              userId: actor.userId,
-              botId: created.id,
-              kind,
-            });
-            await tx.bot.update({ where: { id: created.id }, data: { computerId: dedicated.id } });
-          }
           await tx.browserProfile.create({
             data: {
               spaceId: actor.spaceId,
@@ -725,7 +715,7 @@ export function createRepos(
       const updated = await withTransactionRetry(() =>
         prisma.$transaction(async (tx) => {
           const computer = await ensureComputerRecord(tx, {
-            mode,
+            mode: "team",
             spaceId: actor.spaceId,
             userId: actor.userId,
             botId,

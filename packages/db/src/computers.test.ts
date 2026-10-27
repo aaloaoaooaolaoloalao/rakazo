@@ -102,6 +102,7 @@ function fakeSerializingPrisma(initialInUse = 0) {
             const row = rows.get(args.where.scopeKey);
             return row ? { id: row.id } : null;
           }),
+          findFirst: vi.fn(async () => null),
           count: vi.fn(async (args: { where: { bots?: { some?: { id?: { not?: string } } } } }) => {
             const excludeBot = args.where.bots?.some?.id?.not;
             let used = 0;
@@ -255,9 +256,9 @@ afterEach(() => {
 describe("team computer keys", () => {
   const team = { mode: "team" as const, spaceId: "space-1" };
 
-  it("keys a team computer by space and user", () => {
-    expect(computerScopeKey({ ...team, userId: "user-1" })).toBe("team:space-1:user-1");
-    expect(computerScopeKey({ ...team, userId: "user-2" })).toBe("team:space-1:user-2");
+  it("keys a team computer by user across spaces", () => {
+    expect(computerScopeKey({ ...team, userId: "user-1" })).toBe("team:user:user-1");
+    expect(computerScopeKey({ ...team, userId: "user-2" })).toBe("team:user:user-2");
     expect(computerScopeKey({ ...baseInput })).toBe("bot:bot-4");
   });
 
@@ -267,7 +268,7 @@ describe("team computer keys", () => {
     expect(first).toMatch(/^team-[0-9a-f]{32}$/);
     expect(first).toBe(computerHomeKey({ ...team, userId: "user-1" }));
     expect(first.slice(0, 40)).not.toBe(second.slice(0, 40));
-    expect(computerHomeKey({ ...team, spaceId: "space-2", userId: "user-1" })).not.toBe(first);
+    expect(computerHomeKey({ ...team, spaceId: "space-2", userId: "user-1" })).toBe(first);
     expect(computerHomeKey(baseInput)).toBe("bot-4");
   });
 
@@ -406,7 +407,7 @@ describe("ensureComputerRecord", () => {
     });
     await prisma.bot.update({ where: { id: "bot-1" }, data: { computerId: dedicated.id } });
     expect(state.inUse).toBe(1);
-    expect(refs.get("team:space-1:user-1")?.size).toBe(0);
+    expect(refs.get("team:user:user-1")?.size).toBe(0);
   });
 });
 
