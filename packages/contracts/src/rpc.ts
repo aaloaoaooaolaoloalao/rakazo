@@ -1099,13 +1099,36 @@ export const appContract = {
     list: oc.output(z.array(UsageRecordSchema)),
     summary: oc.output(UsageSummarySchema),
   },
+  limits: {
+    status: oc.output(
+      z.object({
+        day: z.object({
+          used: z.number().int(),
+          limit: z.number().int().nullable(),
+          resetsAt: z.string(),
+        }),
+        month: z.object({
+          used: z.number().int(),
+          limit: z.number().int().nullable(),
+          resetsAt: z.string(),
+        }),
+        perRun: z.number().int().nullable(),
+      }),
+    ),
+  },
   export: {
     bot: oc.input(botId).output(ExportManifestSchema),
   },
   notifications: {
     registerPush: oc
       // No whitespace: the token store keeps the registering session on the next line.
-      .input(z.object({ token: z.string().min(8).max(512).regex(/^\S+$/) }))
+      .input(
+        z.object({
+          token: z.string().min(8).max(512).regex(/^\S+$/),
+          provider: z.enum(["expo", "apns"]).optional(),
+          environment: z.enum(["sandbox", "production"]).optional(),
+        }),
+      )
       .output(z.object({ ok: z.literal(true) })),
     unregisterPush: oc.output(z.object({ ok: z.literal(true) })),
   },
