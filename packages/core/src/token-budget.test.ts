@@ -1,9 +1,10 @@
 import { describe, expect, it } from "vitest";
 import { normalizeRunError } from "./run-error.js";
 import {
-  MemoryTokenLedger,
+  claimSize,
   dayWindow,
   decideBudget,
+  MemoryTokenLedger,
   readTokenLimits,
   tokenLimitExemptEmails,
 } from "./token-budget.js";
@@ -17,9 +18,7 @@ describe("token budget", () => {
   });
 
   it("allows a claim under the limit and blocks a claim that lands exactly on the cap", () => {
-    expect(
-      decideBudget(limits, empty(999_999), 1),
-    ).toEqual({ ok: true });
+    expect(decideBudget(limits, empty(999_999), 1)).toEqual({ ok: true });
     expect(decideBudget(limits, empty(1_000_000), 1)).toMatchObject({
       ok: false,
       code: "token_limit",
@@ -80,7 +79,13 @@ describe("token budget", () => {
     });
     const now = new Date("2026-10-27T01:00:00Z");
     const dailyOnly = { ...limits, perRun: 0 };
-    expect(decideBudget(dailyOnly, ledger.snapshot({ userId: "user", runId: "run", now, timeZone: "UTC" }), 1)).toEqual({
+    expect(
+      decideBudget(
+        dailyOnly,
+        ledger.snapshot({ userId: "user", runId: "run", now, timeZone: "UTC" }),
+        1,
+      ),
+    ).toEqual({
       ok: true,
     });
   });
@@ -89,8 +94,22 @@ describe("token budget", () => {
     const ledger = new MemoryTokenLedger();
     const now = new Date("2026-10-27T12:00:00Z");
     const [left, right] = await Promise.all([
-      ledger.claim({ userId: "user", runId: "a", tokens: 600_000, limits: { ...limits, perRun: 0 }, now, timeZone: "UTC" }),
-      ledger.claim({ userId: "user", runId: "b", tokens: 600_000, limits: { ...limits, perRun: 0 }, now, timeZone: "UTC" }),
+      ledger.claim({
+        userId: "user",
+        runId: "a",
+        tokens: 600_000,
+        limits: { ...limits, perRun: 0 },
+        now,
+        timeZone: "UTC",
+      }),
+      ledger.claim({
+        userId: "user",
+        runId: "b",
+        tokens: 600_000,
+        limits: { ...limits, perRun: 0 },
+        now,
+        timeZone: "UTC",
+      }),
     ]);
     const admitted = [left, right].filter((row) => row.ok);
     expect(admitted).toHaveLength(1);
@@ -103,6 +122,57 @@ describe("token budget", () => {
       kind: "token_limit",
       summary: "token_limit",
     });
+  });
+
+  it("caps reserved output at a quarter of the per-run limit", () => {
+    expect(claimSize(1_000, 200_000, limits)).toBe(1_000 + 62_500);
+    expect(claimSize(1_000, 1_000, limits)).toBe(2_000);
+    expect(claimSize(4_000, 0, { ...limits, perRun: 0 })).toBe(4_000);
+  });
+
+  it("blocks the day and the month from real usage after holds are released", async () => {
+    const ledger = new MemoryTokenLedger();
+    const now = new Date("2026-10-27T12:00:00Z");
+    const daily = await ledger.claim({
+      userId: "user",
+      runId: "day",
+      tokens: 1_000_000,
+      limits: { ...limits, perRun: 0 },
+      now,
+      timeZone: "UTC",
+    });
+    ledger.settle(daily.holdId!, 1_000_000, now.getTime());
+    expect(
+      await ledger.claim({
+        userId: "user",
+        runId: "day-next",
+        tokens: 1,
+        limits: { ...limits, perRun: 0 },
+        now,
+        timeZone: "UTC",
+      }),
+    ).toMatchObject({ window: "day" });
+
+    const monthLedger = new MemoryTokenLedger();
+    const month = await monthLedger.claim({
+      userId: "user",
+      runId: "month",
+      tokens: 3_000_000,
+      limits: { ...limits, perRun: 0, daily: 0 },
+      now,
+      timeZone: "UTC",
+    });
+    monthLedger.settle(month.holdId!, 3_000_000, now.getTime());
+    expect(
+      await monthLedger.claim({
+        userId: "user",
+        runId: "month-next",
+        tokens: 1,
+        limits: { ...limits, perRun: 0, daily: 0 },
+        now,
+        timeZone: "UTC",
+      }),
+    ).toMatchObject({ window: "month" });
   });
 
   it("starts the day at midnight in the user zone", () => {

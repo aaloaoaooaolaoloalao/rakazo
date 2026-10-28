@@ -6,8 +6,8 @@ export const TOKEN_LIMIT_CODE = "token_limit";
  * call reserves its input estimate plus its output cap until the real usage row replaces
  * that reservation. Two claims cannot both pass when their sum would cross the cap.
  * The remaining overshoot is only the input-estimate error of a call already admitted
- * (the provider may count more input than we reserved). Output is reserved at the cap
- * sent to the provider, so it does not add a second gap.
+ * (the provider may count more input than we reserved). The output part of a claim is
+ * capped at 25% of the per-run limit so a huge model max cannot block a run alone.
  */
 export const TOKEN_BUDGET_OVERSHOOT =
   "One in-flight call may exceed its reserved input estimate. Output is reserved up front.";
@@ -68,19 +68,21 @@ export function decideBudget(
   if (limits.daily > 0 && snapshot.dayUsed + snapshot.dayReserved + tokens > limits.daily) {
     return { ok: false, code: TOKEN_LIMIT_CODE, window: "day" };
   }
-  if (
-    limits.monthly > 0 &&
-    snapshot.monthUsed + snapshot.monthReserved + tokens > limits.monthly
-  ) {
+  if (limits.monthly > 0 && snapshot.monthUsed + snapshot.monthReserved + tokens > limits.monthly) {
     return { ok: false, code: TOKEN_LIMIT_CODE, window: "month" };
   }
   return { ok: true };
 }
 
-export function claimSize(inputTokensEstimate: number, maxOutputTokens: number): number {
-  const cap = readTokenLimits().perRun;
+export function claimSize(
+  inputTokensEstimate: number,
+  maxOutputTokens: number,
+  limits: TokenLimits = readTokenLimits(),
+): number {
+  const cap = limits.perRun;
   const output = Math.max(0, Math.floor(maxOutputTokens));
-  const bounded = cap > 0 ? Math.min(output, cap) : output;
+  const outputCeiling = cap > 0 ? Math.floor(cap * 0.25) : output;
+  const bounded = cap > 0 ? Math.min(output, outputCeiling) : output;
   return Math.max(0, Math.floor(inputTokensEstimate)) + bounded;
 }
 
@@ -230,7 +232,11 @@ export class MemoryTokenLedger {
   snapshot(input: { userId: string; runId: string; now: Date; timeZone: string }): BudgetSnapshot {
     const day = dayWindow(input.now, input.timeZone).start.getTime();
     const month = monthWindow(input.now, input.timeZone).start.getTime();
-    const sum = (rows: Array<{ userId: string; runId?: string; tokens: number; at: number }>, since: number, runId?: string) =>
+    const sum = (
+      rows: Array<{ userId: string; runId?: string; tokens: number; at: number }>,
+      since: number,
+      runId?: string,
+    ) =>
       rows
         .filter(
           (row) =>
