@@ -5,6 +5,7 @@ import {
   hasHostedModelCredits,
   isAutoReviewCheckerConfigured,
   PushSessionEndedError,
+  sendApnsTest,
 } from "@rakazo/adapters";
 import type { ActionApprovalRule, Actor, Me, SettingsScope } from "@rakazo/contracts";
 import { approvalModeFromPreference, approvalPreferenceFromMode } from "@rakazo/core";
@@ -200,6 +201,9 @@ export function accountRoutes(ctx: RouterContext) {
       unregisterPush: authed.notifications.unregisterPush.handler(async ({ context }) => {
         await deps.pushTokens.remove(context.actor.userId);
         return { ok: true as const };
+      }),
+      testPush: authed.notifications.testPush.handler(async ({ context }) => {
+        return sendApnsTest(deps.pushTokens, context.actor.userId, context.actor.spaceId);
       }),
     },
     voice: {

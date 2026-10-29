@@ -61,6 +61,13 @@ export function apnsHost(environment: ApnsConfig["environment"]): string {
   return environment === "sandbox" ? "https://api.sandbox.push.apple.com" : "https://api.push.apple.com";
 }
 
+export function apnsEnvironmentFor(
+  device: string | null | undefined,
+  fallback: ApnsConfig["environment"],
+): ApnsConfig["environment"] {
+  return device === "sandbox" || device === "production" ? device : fallback;
+}
+
 /** Drop a sealed or secret-looking body. The alert stays a short preview. */
 export function apnsAlertBody(body: string): string {
   const trimmed = body.trim();
@@ -128,7 +135,7 @@ export async function postApns(input: {
   payload: unknown;
   collapseId: string;
   jwt: string;
-}): Promise<{ status: number; reason?: string }> {
+}): Promise<{ status: number; reason?: string; apnsId?: string }> {
   const body = JSON.stringify(input.payload);
   const url = new URL(`/3/device/${input.deviceToken}`, apnsHost(input.config.environment));
   return new Promise((resolve, reject) => {
@@ -148,7 +155,8 @@ export async function postApns(input: {
     });
     const chunks: Buffer[] = [];
     req.on("response", (headers) => {
-      const status = Number(headers[":status"] ?? 0);
+  const status = Number(headers[":status"] ?? 0);
+      const apnsId = typeof headers["apns-id"] === "string" ? headers["apns-id"] : undefined;
       req.on("data", (chunk: Buffer) => chunks.push(chunk));
       req.on("end", () => {
         client.close();
@@ -158,7 +166,7 @@ export async function postApns(input: {
         } catch {
           reason = undefined;
         }
-        resolve({ status, reason });
+        resolve({ status, reason, apnsId });
       });
     });
     req.on("error", (error) => {
@@ -183,7 +191,7 @@ export class RoutedPushProvider implements NotificationProvider {
     try {
       const record = await this.tokens.load(context.userId);
       if (record?.provider === "apns") {
-        await deliverApns(record.token, message, context, this.tokens);
+        await deliverApns(record, message, context, this.tokens);
         return;
       }
       await this.expo.send(message, context);
@@ -194,19 +202,29 @@ export class RoutedPushProvider implements NotificationProvider {
 }
 
 async function deliverApns(
-  deviceToken: string,
+  record: { token: string; environment?: string | null },
   message: NotificationMessage,
   context: AdapterContext,
   tokens: PushTokenStore,
+  options: { force?: boolean } = {},
 ) {
-  const config = readApnsConfig();
-  if (!config) return;
-  if (!allowApnsSend(context.userId, message.threadId)) return;
+  const base = readApnsConfig();
+  if (!base) {
+    getLogger().warn("apns skipped", { reason: "config" });
+    return { status: 0, reason: "config", environment: "production" as const };
+  }
+  const environment = apnsEnvironmentFor(record.environment, base.environment);
+  const config = { ...base, environment };
+  if (!options.force && !allowApnsSend(context.userId, message.threadId)) {
+    getLogger().info("apns skipped", { reason: "rate", environment, suffix: tokenSuffix(record.token) });
+    return { status: 0, reason: "rate", environment };
+  }
   const payload = buildApnsPayload(message, context.spaceId);
+  getLogger().info("apns send", { environment, topic: config.topic, suffix: tokenSuffix(record.token) });
   const sendOnce = () =>
     postApns({
       config,
-      deviceToken,
+      deviceToken: record.token,
       payload,
       collapseId: message.threadId,
       jwt: cachedApnsJwt(config),
@@ -217,7 +235,45 @@ async function deliverApns(
     result = await sendOnce();
     action = classifyApnsError(result.status, result.reason);
   }
-  getLogger().info("apns", { status: result.status, suffix: tokenSuffix(deviceToken) });
+  getLogger().info("apns result", {
+    status: result.status,
+    reason: result.reason,
+    apnsId: result.apnsId,
+    environment,
+    suffix: tokenSuffix(record.token),
+  });
   if (action === "drop") await tokens.remove(context.userId);
+  return { status: result.status, reason: result.reason, apnsId: result.apnsId, environment };
+}
+
+export async function sendApnsTest(
+  tokens: PushTokenStore,
+  userId: string,
+  spaceId: string,
+): Promise<{ status: number; reason?: string; apnsId?: string; environment: string }> {
+  const record = await tokens.load(userId);
+  if (!record || record.provider !== "apns") {
+    return { status: 0, reason: "no_token", environment: "production" };
+  }
+  return deliverApns(
+    record,
+    {
+      kind: "completion",
+      title: "SparkAI",
+      body: "בדיקת התראה",
+      botId: "test",
+      threadId: `test:${userId}`,
+    },
+    {
+      operationId: "push.test",
+      traceId: "push.test",
+      spaceId,
+      userId,
+      botId: "test",
+      signal: new AbortController().signal,
+    },
+    tokens,
+    { force: true },
+  );
 }
 
