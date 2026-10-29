@@ -1131,6 +1131,14 @@ export const appContract = {
       )
       .output(z.object({ ok: z.literal(true) })),
     unregisterPush: oc.output(z.object({ ok: z.literal(true) })),
+    testPush: oc.output(
+      z.object({
+        status: z.number().int(),
+        reason: z.string().optional(),
+        apnsId: z.string().optional(),
+        environment: z.string(),
+      }),
+    ),
   },
   search: {
     query: oc.input(z.object({ q: z.string().max(200) })).output(SearchQueryOutputSchema),
