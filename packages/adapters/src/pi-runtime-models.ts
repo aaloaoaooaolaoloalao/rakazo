@@ -14,14 +14,17 @@ import {
   registerOpenAiCompatibleRuntime,
 } from "./pi-openai-compatible-provider.js";
 import { REASONING_MODEL_MAX_TOKENS, resolveCompletionMaxTokens } from "./pi-runtime-limits.js";
+import { registerSparkModelOverrides } from "./spark-model-overrides.js";
 
 // Built on first use, not at module load: entry points call loadRootEnv() after
 // their imports, and ESM hoists those imports, so module-level env reads here
 // would run before .env is loaded and miss the local provider entirely.
 let catalogModelsCache: Models | undefined;
 function catalogModels(): Models {
-  catalogModelsCache ??= registerOpenAiCompatibleCatalog(
-    registerLocalProvider(applyPiModelCompatibility(builtinModels())),
+  catalogModelsCache ??= registerSparkModelOverrides(
+    registerOpenAiCompatibleCatalog(
+      registerLocalProvider(applyPiModelCompatibility(builtinModels())),
+    ),
   );
   return catalogModelsCache;
 }
