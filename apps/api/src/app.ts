@@ -146,6 +146,7 @@ import { configuredEmailProvider } from "./email.js";
 import type { AppEnv } from "./env.js";
 import { loadEnv } from "./env.js";
 import { healthRoutes } from "./health.js";
+import { limitRpc } from "./rpc-rate-limit.js";
 import { mountLocalComputerHost } from "./local-settings.js";
 import {
   createMessagingInboundHandler,
@@ -739,6 +740,15 @@ async function buildApp(overrides: CreateAppOverrides): Promise<AppHandles> {
     clientInterceptors: [onError((error, { path }) => handleRpcError(error, path))],
   });
   const app = new Hono();
+  app.use("*", async (c, next) => {
+    await next();
+    c.header("X-Content-Type-Options", "nosniff");
+    c.header("Referrer-Policy", "no-referrer");
+    c.header("X-Frame-Options", "DENY");
+    if (process.env.NODE_ENV === "production") {
+      c.header("Strict-Transport-Security", "max-age=15552000");
+    }
+  });
   app.use("*", requestLogging(logger));
   app.use("*", clientIpMiddleware(clientIp, env.clientIpHeader));
   app.use(
@@ -867,6 +877,8 @@ async function buildApp(overrides: CreateAppOverrides): Promise<AppHandles> {
   app.use("/rpc/*", async (c, next) => {
     const session = await requestSession(c.req.raw);
     const actor = session?.actor ?? null;
+    const limited = await limitRpc(c, prisma, actor?.userId);
+    if (limited) return limited;
     if (actor) {
       enrichLogContext({ "user.id": actor.userId, "space.id": actor.spaceId });
     }

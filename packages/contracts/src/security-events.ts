@@ -25,6 +25,7 @@ export const SECURITY_EVENT_TYPES = [
   "approval.policy.changed",
   "egress.refused",
   "rate_limit.hit",
+  "budget.token_limit",
 ] as const;
 
 export const SecurityEventTypeSchema = z.enum(SECURITY_EVENT_TYPES);
