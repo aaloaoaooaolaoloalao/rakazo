@@ -10,6 +10,7 @@ import {
   registerOpenAiCompatibleCatalog,
 } from "./pi-openai-compatible-provider.js";
 import { resolveRuntimeModel } from "./pi-runtime-models.js";
+import { registerSparkModelOverrides } from "./spark-model-overrides.js";
 
 /** Computer tools whose results include screenshots for the model. */
 export const IMAGE_RETURNING_COMPUTER_TOOLS = new Set([
@@ -55,8 +56,10 @@ let catalogModelsCache: Models | undefined;
 
 function catalogModels(): Models {
   // Same catalog the runtime calls, including configured compatible providers.
-  catalogModelsCache ??= registerOpenAiCompatibleCatalog(
-    registerLocalProvider(applyPiModelCompatibility(builtinModels())),
+  catalogModelsCache ??= registerSparkModelOverrides(
+    registerOpenAiCompatibleCatalog(
+      registerLocalProvider(applyPiModelCompatibility(builtinModels())),
+    ),
   );
   return catalogModelsCache;
 }
