@@ -34,6 +34,7 @@ import {
   databaseCapacityBackoffMs,
   deploymentModelUsageLookup,
   ExpoPushProvider,
+  RoutedPushProvider,
   GraphileJobPublisher,
   homeStorageSweeper,
   InMemoryJobQueue,
@@ -236,11 +237,12 @@ async function main() {
   const cloudAgent = createCloudAgentConnection();
   // Shared with the reconciler so a stuck wait uses the same push path as a finish notice.
   const pushTokens = new PrismaPushTokenStore(prisma, resolveEncryptionKey(process.env));
-  const notifications = new ExpoPushProvider(pushTokens, {
+  const expoPush = new ExpoPushProvider(pushTokens, {
     sessionExpiresAt: (sessionId) => pushSessionExpiresAt(prisma, sessionId),
     jobs,
     accessToken: process.env.EXPO_ACCESS_TOKEN,
   });
+  const notifications = new RoutedPushProvider(expoPush, pushTokens);
   const executor = createRunExecutor({
     maxUploadSizeBytes: uploadSizeFromEnv(process.env),
     prisma,

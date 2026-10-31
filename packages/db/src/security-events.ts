@@ -33,6 +33,7 @@ const FAILURE_TYPES = new Set<SecurityEventType>([
   "auth.sign_up.failed",
   "egress.refused",
   "rate_limit.hit",
+  "budget.token_limit",
 ]);
 const MAX_METADATA_KEYS = 16;
 const MAX_METADATA_STRING = 200;

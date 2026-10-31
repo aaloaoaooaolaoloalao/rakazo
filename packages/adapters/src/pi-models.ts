@@ -16,6 +16,7 @@ import {
   registerOpenAiCompatibleCatalog,
 } from "./pi-openai-compatible-provider.js";
 import { MODEL_CONNECT_TIMEOUT_MS } from "./pi-runtime-limits.js";
+import { registerSparkModelOverrides } from "./spark-model-overrides.js";
 
 export type PiCatalogAuth = "api-key" | "oauth" | "both";
 
@@ -263,8 +264,10 @@ function buildPiCatalog(): PiCatalogEntry[] {
   catalogProbeBaseUrls.clear();
   catalogBaseUrls.clear();
   hiddenCatalogKeys.clear();
-  const models = registerOpenAiCompatibleCatalog(
-    registerLocalProvider(applyPiModelCompatibility(builtinModels())),
+  const models = registerSparkModelOverrides(
+    registerOpenAiCompatibleCatalog(
+      registerLocalProvider(applyPiModelCompatibility(builtinModels())),
+    ),
   );
   const entries: PiCatalogEntry[] = [];
   for (const provider of models.getProviders()) {

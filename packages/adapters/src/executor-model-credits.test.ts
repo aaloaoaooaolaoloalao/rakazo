@@ -86,7 +86,7 @@ describe("funding selects credentials without deleting saved connections", () =>
             requireStoredSecret,
           );
           expect(resolved.apiKey).toBe(hosted ? "fixture-deployment-key" : "fixture-personal-key");
-          expect(Boolean(resolved.callObserver)).toBe(hosted);
+          expect(Boolean(resolved.callObserver)).toBe(true);
           expect(load.mock.calls.length).toBe(hosted ? 0 : 1);
         } finally {
           vi.unstubAllEnvs();

@@ -5,6 +5,7 @@ import {
   hasHostedModelCredits,
   isAutoReviewCheckerConfigured,
   PushSessionEndedError,
+  sendApnsTest,
 } from "@rakazo/adapters";
 import type { ActionApprovalRule, Actor, Me, SettingsScope } from "@rakazo/contracts";
 import { approvalModeFromPreference, approvalPreferenceFromMode } from "@rakazo/core";
@@ -187,7 +188,10 @@ export function accountRoutes(ctx: RouterContext) {
         const sessionId = context.sessionId;
         if (!sessionId) throw new ORPCError("UNAUTHORIZED");
         try {
-          await deps.pushTokens.save(context.actor.userId, input.token, sessionId);
+          await deps.pushTokens.save(context.actor.userId, input.token, sessionId, {
+            provider: input.provider,
+            environment: input.environment,
+          });
         } catch (error) {
           if (error instanceof PushSessionEndedError) throw new ORPCError("UNAUTHORIZED");
           throw error;
@@ -197,6 +201,9 @@ export function accountRoutes(ctx: RouterContext) {
       unregisterPush: authed.notifications.unregisterPush.handler(async ({ context }) => {
         await deps.pushTokens.remove(context.actor.userId);
         return { ok: true as const };
+      }),
+      testPush: authed.notifications.testPush.handler(async ({ context }) => {
+        return sendApnsTest(deps.pushTokens, context.actor.userId, context.actor.spaceId);
       }),
     },
     voice: {
