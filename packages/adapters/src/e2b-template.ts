@@ -8,10 +8,10 @@ export const E2B_COMPUTER_TEMPLATE = "rakazo-computer";
 
 /**
  * A computer runs one desktop per active bot (Xvfb, fluxbox, x11vnc, Chromium) plus shell
- * work. Two cores keep the desktop and a browser responsive; 4 GB leaves room for a second
- * bot's Chromium on a Team Computer, where 2 GB would start swapping or killing tabs.
+ * work. One core and 2 GB is the minimum practical size for a single-bot desktop; a second
+ * Chromium or heavy pages may swap. Rebuild the template after changing these values.
  */
-const E2B_COMPUTER_RESOURCES = { cpuCount: 2, memoryMB: 4096 } as const;
+const E2B_COMPUTER_RESOURCES = { cpuCount: 1, memoryMB: 2048 } as const;
 
 type BuildTemplate = (
   template: TemplateClass,
