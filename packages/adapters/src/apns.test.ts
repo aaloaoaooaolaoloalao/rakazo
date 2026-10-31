@@ -3,6 +3,8 @@ import { describe, expect, it } from "vitest";
 import {
   allowApnsSend,
   apnsAlertBody,
+  apnsEnvironmentFor,
+  apnsHost,
   buildApnsPayload,
   classifyApnsError,
   createApnsJwt,
@@ -42,6 +44,13 @@ describe("apns", () => {
     expect(classifyApnsError(400, "BadDeviceToken")).toBe("drop");
     expect(classifyApnsError(503, "Shutdown")).toBe("retry");
     expect(classifyApnsError(400, "BadTopic")).toBe("ignore");
+  });
+
+  it("sends a sandbox token to the sandbox host", () => {
+    expect(apnsEnvironmentFor("sandbox", "production")).toBe("sandbox");
+    expect(apnsEnvironmentFor(null, "production")).toBe("production");
+    expect(apnsHost("sandbox")).toBe("https://api.sandbox.push.apple.com");
+    expect(apnsHost("production")).toBe("https://api.push.apple.com");
   });
 
   it("stays disabled without a key and collapses a chatty thread", () => {

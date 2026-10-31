@@ -1,17 +1,18 @@
 import { randomUUID } from "node:crypto";
 import type { ModelCallObserver } from "@rakazo/adapter-kit";
 import {
-  PROVIDER_UNAVAILABLE_CODE,
   claimSize,
+  PROVIDER_UNAVAILABLE_CODE,
   providerCircuit,
   readTokenLimits,
 } from "@rakazo/core";
-import { claimTokenBudget, releaseTokenHold } from "@rakazo/db";
 import type { PrismaClient } from "@rakazo/db";
+import { claimTokenBudget, releaseTokenHold } from "@rakazo/db";
 
 type BudgetDb = Pick<PrismaClient, "$transaction" | "user" | "tokenBudgetHold" | "usageRecord">;
 
 const calls = new Map<string, { count: number; started: number }>();
+const holdByReservation = new Map<string, string>();
 
 function modelCallCap(env: NodeJS.ProcessEnv = process.env): number {
   const raw = env.MAX_MODEL_CALLS_PER_RUN?.trim();
@@ -50,7 +51,10 @@ export function withTokenBudget(
       calls.set(runId, state);
       const callsCap = modelCallCap();
       const wall = wallCap();
-      if ((callsCap > 0 && state.count > callsCap) || (wall > 0 && Date.now() - state.started > wall)) {
+      if (
+        (callsCap > 0 && state.count > callsCap) ||
+        (wall > 0 && Date.now() - state.started > wall)
+      ) {
         throw new Error("token_limit");
       }
       const callId = call.callId || randomUUID();
@@ -65,20 +69,18 @@ export function withTokenBudget(
       }
       if (!inner) return callId;
       try {
-        return await inner.beforeCall({ ...call, callId });
+        const reservation = await inner.beforeCall({ ...call, callId });
+        if (reservation !== callId) holdByReservation.set(reservation, callId);
+        return reservation;
       } catch (error) {
         await releaseTokenHold(prisma, callId);
         throw error;
       }
     },
     async afterCall(reservationId, usage) {
-      if (!usage) await releaseTokenHold(prisma, reservationId);
-      else {
-        const actual = (usage.inputTokens ?? 0) + (usage.outputTokens ?? 0);
-        await prisma.tokenBudgetHold
-          .updateMany({ where: { callId: reservationId }, data: { tokens: actual } })
-          .catch(() => undefined);
-      }
+      const holdId = holdByReservation.get(reservationId) ?? reservationId;
+      holdByReservation.delete(reservationId);
+      await releaseTokenHold(prisma, holdId).catch(() => undefined);
       await inner?.afterCall(reservationId, usage);
     },
     onRequestId: inner?.onRequestId,
