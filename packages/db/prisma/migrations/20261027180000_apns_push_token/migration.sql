@@ -1,0 +1,2 @@
+ALTER TABLE "push_tokens" ADD COLUMN IF NOT EXISTS "provider" TEXT NOT NULL DEFAULT 'expo';
+ALTER TABLE "push_tokens" ADD COLUMN IF NOT EXISTS "environment" TEXT;

@@ -105,6 +105,8 @@ model PushToken {
   ciphertext String
   tokenDigest String @unique
   sessionId String
+  provider String @default("expo")
+  environment String?
   updatedAt DateTime @updatedAt
 
   @@map("push_tokens")
