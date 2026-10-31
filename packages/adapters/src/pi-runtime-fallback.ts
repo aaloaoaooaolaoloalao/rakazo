@@ -38,6 +38,10 @@ import {
 } from "./pi-runtime-models.js";
 import { MODEL_STREAM_IDLE_TIMEOUT_MESSAGE } from "./pi-runtime-stream.js";
 import {
+  isMistralProvider,
+  MISTRAL_COMPUTER_SCREENSHOTS_TO_KEEP,
+} from "./spark-model-overrides.js";
+import {
   isThinkingSignatureMismatch,
   withoutThinkingBlocks,
   withoutThinkingFrom,
@@ -224,7 +228,13 @@ function fallbackIncompatibility(
   try {
     context = {
       ...context,
-      messages: pruneForRebuild(context.messages, candidate.config.maxImagesPerPrompt),
+      messages: pruneForRebuild(
+        context.messages,
+        candidate.config.maxImagesPerPrompt,
+        isMistralProvider(candidate.config.provider)
+          ? MISTRAL_COMPUTER_SCREENSHOTS_TO_KEEP
+          : undefined,
+      ),
     };
   } catch (error) {
     if (error instanceof ModelImageLimitError)

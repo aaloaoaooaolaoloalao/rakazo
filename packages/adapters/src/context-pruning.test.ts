@@ -296,6 +296,23 @@ describe("context pruning on rebuild", () => {
     expect(normalizedImageLimit(limit)).toBe(expected);
   });
 
+  it("replaces an image-only omitted screenshot with a short placeholder", () => {
+    const pruned = pruneComputerScreenshotContext(["a", "b", "c"].map(screenshot));
+    expect(pruned[0]).toMatchObject({
+      content: [{ type: "text", text: expect.stringContaining("screenshot omitted") }],
+    });
+  });
+
+  it("can keep three computer screenshots when asked", () => {
+    const messages = ["a", "b", "c", "d"].map(screenshot);
+    expect(kept(pruneComputerScreenshotContext(messages, undefined, 3))).toEqual([
+      false,
+      true,
+      true,
+      true,
+    ]);
+  });
+
   it("keeps two screenshots on a rebuild even when the model allows more", () => {
     const messages = ["a", "b", "c", "d", "e"].map(screenshot);
     expect(kept(pruneComputerScreenshotContext(messages, 5))).toEqual([

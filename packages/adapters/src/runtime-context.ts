@@ -3,7 +3,12 @@ import type { Api, Context, Message, Model } from "@earendil-works/pi-ai";
 import type { AdapterContext, AgentRunRequest, AgentUsage } from "@rakazo/adapter-kit";
 import { DEFAULT_CONTEXT_STRATEGY } from "@rakazo/adapter-kit";
 import { getLogger } from "@rakazo/logging";
-import { imagePartCount, normalizedImageLimit, pruneForRebuild } from "./context-pruning.js";
+import {
+  computerScreenshotImageCount,
+  imagePartCount,
+  normalizedImageLimit,
+  pruneForRebuild,
+} from "./context-pruning.js";
 import type { CacheRequest, ContextBudget } from "./context-selection.js";
 import {
   ContextBudgetError,
@@ -14,6 +19,10 @@ import {
   shortenToolResultText,
 } from "./context-selection.js";
 import { effectiveOutputReserve, resolveCompletionMaxTokens } from "./pi-runtime-limits.js";
+import {
+  isMistralProvider,
+  MISTRAL_COMPUTER_SCREENSHOTS_TO_KEEP,
+} from "./spark-model-overrides.js";
 import { withoutThinkingFrom } from "./thinking-signatures.js";
 
 /** Minimum whole-result window, unless the full model budget requires clipping. */
@@ -552,8 +561,17 @@ export function createRuntimeContextPolicy(
   }
   /** Removes what only a rebuild may drop: stale page state and screenshots over the budget. */
   function pruned(ctx: Context): Context {
-    const messages = pruneForRebuild(ctx.messages, request.model.maxImagesPerPrompt);
+    const messages = pruneForRebuild(
+      ctx.messages,
+      request.model.maxImagesPerPrompt,
+      mistralScreenshotKeep(),
+    );
     return messages === ctx.messages ? ctx : { ...ctx, messages };
+  }
+  function mistralScreenshotKeep(): number | undefined {
+    return isMistralProvider(request.model.provider)
+      ? MISTRAL_COMPUTER_SCREENSHOTS_TO_KEEP
+      : undefined;
   }
   /** Records the context about to be sent for cache prediction and cross-run reuse. */
   function commit(
@@ -638,13 +656,18 @@ export function createRuntimeContextPolicy(
         const imageLimit = normalizedImageLimit(request.model.maxImagesPerPrompt);
         const overTokens = (size: Size) => size.tokens > available;
         const overImages = (size: Size) => imageLimit !== undefined && size.images > imageLimit;
+        const screenshotKeep = mistralScreenshotKeep();
+        const overMistralScreenshots =
+          screenshotKeep !== undefined &&
+          computerScreenshotImageCount(appended) > screenshotKeep &&
+          computerScreenshotImageCount(built.context.messages) <= screenshotKeep;
         const kept = measure(ctx, appended);
         const fresh = measure(ctx, built.context.messages);
         // Each limit is enforced on its own: a rebuild that fixes the image count is still
         // taken when the text stays too large for the window, and the other way round.
         if (overTokens(kept) && !overTokens(fresh))
           built = rebuildWithHeadroom(ctx, model) ?? built;
-        else if (!(overImages(kept) && !overImages(fresh)))
+        else if (!(overImages(kept) && !overImages(fresh)) && !overMistralScreenshots)
           append =
             overTokens(kept) ||
             overImages(kept) ||

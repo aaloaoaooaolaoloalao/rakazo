@@ -13,7 +13,6 @@ import {
 } from "@rakazo/contracts";
 import { MISSING_MODEL_RUN_ERROR } from "@rakazo/core";
 import { retireModelCredential } from "@rakazo/db";
-import { withTokenBudget } from "./token-budget-observer.js";
 import { cloudflareProviderEnv } from "./cloudflare-ai-gateway.js";
 import { resolveDeploymentModel } from "./deployment-model.js";
 import type { ExecutorDeps } from "./executor-deps.js";
@@ -50,6 +49,8 @@ import {
   serializeModelSecret,
   withModelCredentialLock,
 } from "./pi-oauth.js";
+import { applyMistralImageLimit } from "./spark-model-overrides.js";
+import { withTokenBudget } from "./token-budget-observer.js";
 
 export function runtimeFallbackModel(runtime: AgentRuntime) {
   return runtime.describe().capabilities.scripted ? { provider: "scripted", id: "scripted" } : null;
@@ -181,7 +182,12 @@ export async function resolveModelKey(...args: Parameters<typeof resolveModelKey
     userId,
     !credential && billingEnabled ? await hostedModelCreditObserver(deps.prisma, scope) : undefined,
   );
-  return { ...material, apiKey: material.apiKey ?? runtimeKey, callObserver };
+  return {
+    ...material,
+    apiKey: material.apiKey ?? runtimeKey,
+    callObserver,
+    maxImagesPerPrompt: applyMistralImageLimit(provider, material.maxImagesPerPrompt),
+  };
 }
 
 async function resolveModelKeyMaterial(
@@ -452,7 +458,7 @@ export async function resolveConnectedRunModel(
     reasoning: resolved.reasoning,
     maxTokens: resolved.maxTokens,
     acceptsImages: resolved.acceptsImages,
-    maxImagesPerPrompt: resolved.maxImagesPerPrompt,
+    maxImagesPerPrompt: applyMistralImageLimit(provider, resolved.maxImagesPerPrompt),
     thinkingLevel:
       ((thinkingLevel !== undefined
         ? thinkingLevel
@@ -547,7 +553,7 @@ export async function resolveRunModel(
     reasoning: resolved.reasoning,
     maxTokens: resolved.maxTokens,
     acceptsImages: resolved.acceptsImages,
-    maxImagesPerPrompt: resolved.maxImagesPerPrompt,
+    maxImagesPerPrompt: applyMistralImageLimit(provider, resolved.maxImagesPerPrompt),
     thinkingLevel: thinkingLevel ?? resolved.thinkingLevel ?? null,
     oauth: resolved.oauth
       ? {

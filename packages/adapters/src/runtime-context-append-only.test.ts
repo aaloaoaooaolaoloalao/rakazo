@@ -324,6 +324,26 @@ describe("append-only run transcript", () => {
     expect(thinkingCount(rebuilt)).toBeLessThan(thinkingCount(sent[first! - 1]!));
   });
 
+  it("keeps the last three Mistral screenshots instead of accumulating past eight", () => {
+    const input = request({
+      contextStrategy: "retrieval",
+      model: {
+        provider: "mistral",
+        id: "mistral-medium-latest",
+        maxImagesPerPrompt: 8,
+      },
+    });
+    const steps: Step[] = Array.from({ length: 12 }, () => ({
+      tool: "computer_observe",
+      screenshot: true,
+    }));
+    const sent = simulateRun(input, steps);
+    expect(sent.map(imageCount).every((count) => count <= 3)).toBe(true);
+    expect(imageCount(sent.at(-1)!)).toBe(3);
+    expect(JSON.stringify(sent.at(-1))).toContain("screenshot omitted");
+    for (const context of sent) expect(staleThinking(context)).toEqual([]);
+  });
+
   it("rebuilds at the model's image limit and keeps the two latest screenshots", () => {
     const input = request({
       contextStrategy: "retrieval",
