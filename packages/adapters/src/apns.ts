@@ -18,13 +18,23 @@ export interface ApnsConfig {
   environment: "production" | "sandbox";
 }
 
-export function readApnsConfig(env: NodeJS.ProcessEnv = process.env): ApnsConfig | undefined {
-  const keyId = env.APNS_KEY_ID?.trim();
-  const inline = env.APNS_KEY_P8?.trim();
-  const path = env.APNS_KEY_PATH?.trim();
-  if (!keyId || (!inline && !path)) return undefined;
-  let key = inline ?? "";
-  if (!key && path) {
+export interface ApnsKeyMaterial {
+  key: string;
+  keyId: string;
+}
+
+function readApnsKeyMaterial(
+  env: NodeJS.ProcessEnv,
+  keyIdName: "APNS_KEY_ID" | "APNS_SANDBOX_KEY_ID",
+  inlineName: "APNS_KEY_P8" | "APNS_SANDBOX_KEY_P8",
+  pathName: "APNS_KEY_PATH" | "APNS_SANDBOX_KEY_PATH",
+): ApnsKeyMaterial | undefined {
+  const keyId = env[keyIdName]?.trim();
+  const inline = env[inlineName];
+  const path = env[pathName]?.trim();
+  if (!keyId || (!inline?.trim() && !path)) return undefined;
+  let key = inline?.length ? inline : "";
+  if (!key.trim() && path) {
     try {
       key = readFileSync(path, "utf8");
     } catch {
@@ -32,14 +42,41 @@ export function readApnsConfig(env: NodeJS.ProcessEnv = process.env): ApnsConfig
     }
   }
   if (!key.includes("BEGIN PRIVATE KEY")) return undefined;
+  return { key, keyId };
+}
+
+export function readApnsSandboxKey(env: NodeJS.ProcessEnv = process.env): ApnsKeyMaterial | undefined {
+  return readApnsKeyMaterial(env, "APNS_SANDBOX_KEY_ID", "APNS_SANDBOX_KEY_P8", "APNS_SANDBOX_KEY_PATH");
+}
+
+export function readApnsConfig(env: NodeJS.ProcessEnv = process.env): ApnsConfig | undefined {
+  const material = readApnsKeyMaterial(env, "APNS_KEY_ID", "APNS_KEY_P8", "APNS_KEY_PATH");
+  if (!material) return undefined;
   const environment = env.APNS_ENV?.trim() === "sandbox" ? "sandbox" : "production";
   return {
-    key,
-    keyId,
+    key: material.key,
+    keyId: material.keyId,
     teamId: env.APNS_TEAM_ID?.trim() || "WNAP7G2A58",
     topic: env.APNS_TOPIC?.trim() || "com.alonshelly.sparkai",
     environment,
   };
+}
+
+/** Pick host environment and signing key for a stored device record. */
+export function resolveApnsConfigForDelivery(
+  base: ApnsConfig,
+  deviceEnvironment: string | null | undefined,
+  env: NodeJS.ProcessEnv = process.env,
+): ApnsConfig {
+  const environment = apnsEnvironmentFor(deviceEnvironment, base.environment);
+  if (environment !== "sandbox") {
+    return { ...base, environment };
+  }
+  const sandboxKey = readApnsSandboxKey(env);
+  if (!sandboxKey) {
+    return { ...base, environment };
+  }
+  return { ...base, environment, key: sandboxKey.key, keyId: sandboxKey.keyId };
 }
 
 function b64url(value: Buffer | string): string {
@@ -108,13 +145,18 @@ export function tokenSuffix(token: string): string {
   return token.slice(-6);
 }
 
-let cached: { token: string; until: number } | undefined;
+let jwtCache = new Map<string, { token: string; until: number }>();
 
 export function cachedApnsJwt(config: ApnsConfig, now = Date.now()): string {
-  if (cached && cached.until > now) return cached.token;
+  const hit = jwtCache.get(config.keyId);
+  if (hit && hit.until > now) return hit.token;
   const token = createApnsJwt(config, now);
-  cached = { token, until: now + JWT_TTL_MS };
+  jwtCache.set(config.keyId, { token, until: now + JWT_TTL_MS });
   return token;
+}
+
+export function resetApnsJwtCacheForTests() {
+  jwtCache = new Map();
 }
 
 const recent = new Map<string, number>();
@@ -155,7 +197,7 @@ export async function postApns(input: {
     });
     const chunks: Buffer[] = [];
     req.on("response", (headers) => {
-  const status = Number(headers[":status"] ?? 0);
+      const status = Number(headers[":status"] ?? 0);
       const apnsId = typeof headers["apns-id"] === "string" ? headers["apns-id"] : undefined;
       req.on("data", (chunk: Buffer) => chunks.push(chunk));
       req.on("end", () => {
@@ -213,14 +255,19 @@ async function deliverApns(
     getLogger().warn("apns skipped", { reason: "config" });
     return { status: 0, reason: "config", environment: "production" as const };
   }
-  const environment = apnsEnvironmentFor(record.environment, base.environment);
-  const config = { ...base, environment };
+  const config = resolveApnsConfigForDelivery(base, record.environment);
+  const environment = config.environment;
   if (!options.force && !allowApnsSend(context.userId, message.threadId)) {
     getLogger().info("apns skipped", { reason: "rate", environment, suffix: tokenSuffix(record.token) });
     return { status: 0, reason: "rate", environment };
   }
   const payload = buildApnsPayload(message, context.spaceId);
-  getLogger().info("apns send", { environment, topic: config.topic, suffix: tokenSuffix(record.token) });
+  getLogger().info("apns send", {
+    environment,
+    keyId: config.keyId,
+    topic: config.topic,
+    suffix: tokenSuffix(record.token),
+  });
   const sendOnce = () =>
     postApns({
       config,

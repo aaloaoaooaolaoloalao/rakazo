@@ -46,6 +46,9 @@ x-app-environment: &app-environment
   APNS_KEY_P8:
   APNS_KEY_PATH:
   APNS_KEY_ID:
+  APNS_SANDBOX_KEY_P8:
+  APNS_SANDBOX_KEY_PATH:
+  APNS_SANDBOX_KEY_ID:
   APNS_TEAM_ID: ${APNS_TEAM_ID:-WNAP7G2A58}
   APNS_TOPIC: ${APNS_TOPIC:-com.alonshelly.sparkai}
   APNS_ENV: ${APNS_ENV:-production}
