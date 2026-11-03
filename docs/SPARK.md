@@ -22,6 +22,7 @@ Public HTTPS host: `https://34-165-87-142.sslip.io` (sslip.io; replace with a re
 | `spark/hide-model-voice-settings` | Web UI: hide model/voice settings behind product flags (`product-ui.ts`). |
 | `spark/e2b-computer-1vcpu-2gb` | Cheaper E2B computer template (build tooling; not required for current docker deploy). |
 | **`spark/main`** | Integration branch = PR #3 + web flags from hide-model (matches **intended** full product source; images on server were built per-service as above). |
+| (adapters) concise chat replies | System prompt adds plain-language, short-by-default reply guidance (`spark-reply-style.ts`); pairs with per-user token budget. |
 
 `product/apple-signin-auto-computer` — **not present** on the fork at last check.
 
