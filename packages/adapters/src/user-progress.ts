@@ -7,8 +7,8 @@ import { isToolActivityBlock } from "@rakazo/core";
  */
 export const USER_PROGRESS_MESSAGE_MAX_LENGTH = 500;
 
-/** Durable interim chat messages wait until a turn is genuinely long. */
-export const MID_TURN_PROGRESS_MIN_TURN_AGE_MS = 60_000;
+/** Durable interim chat messages wait until a turn is genuinely long (after the first beat). */
+export const MID_TURN_PROGRESS_MIN_TURN_AGE_MS = 15_000;
 
 /** Cap on durable interim chat messages (message_user + promoted narration) per run. */
 export const MID_TURN_PROGRESS_MAX_PER_RUN = 3;
@@ -19,9 +19,9 @@ export const MID_TURN_PROGRESS_MAX_PER_RUN = 3;
  * beats without flooding the thread.
  */
 export function midTurnProgressBudgetAllows(publishedCount: number, turnAgeMs: number): boolean {
-  return (
-    publishedCount < MID_TURN_PROGRESS_MAX_PER_RUN && turnAgeMs >= MID_TURN_PROGRESS_MIN_TURN_AGE_MS
-  );
+  if (publishedCount >= MID_TURN_PROGRESS_MAX_PER_RUN) return false;
+  if (publishedCount === 0) return true;
+  return turnAgeMs >= MID_TURN_PROGRESS_MIN_TURN_AGE_MS;
 }
 
 /**

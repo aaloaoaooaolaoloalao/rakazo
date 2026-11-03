@@ -94,13 +94,18 @@ describe("isProgressMessageTruncated", () => {
 });
 
 describe("midTurnProgressBudgetAllows", () => {
-  it("stays silent while a turn is still fresh", () => {
-    expect(midTurnProgressBudgetAllows(0, MID_TURN_PROGRESS_MIN_TURN_AGE_MS - 1)).toBe(false);
+  it("allows the first beat immediately", () => {
+    expect(midTurnProgressBudgetAllows(0, 0)).toBe(true);
+    expect(midTurnProgressBudgetAllows(0, MID_TURN_PROGRESS_MIN_TURN_AGE_MS - 1)).toBe(true);
   });
 
-  it("allows a few beats once a turn is long", () => {
+  it("waits before later beats on a still-fresh turn", () => {
+    expect(midTurnProgressBudgetAllows(1, MID_TURN_PROGRESS_MIN_TURN_AGE_MS - 1)).toBe(false);
+  });
+
+  it("allows a few beats once a turn is long enough", () => {
     const age = MID_TURN_PROGRESS_MIN_TURN_AGE_MS;
-    expect(midTurnProgressBudgetAllows(0, age)).toBe(true);
+    expect(midTurnProgressBudgetAllows(1, age)).toBe(true);
     expect(midTurnProgressBudgetAllows(MID_TURN_PROGRESS_MAX_PER_RUN - 1, age)).toBe(true);
   });
 
