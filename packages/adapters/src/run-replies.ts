@@ -10,12 +10,14 @@ import { messageUserMaxLength } from "./user-progress.js";
 export { SPARK_CONCISE_REPLY_GUIDANCE } from "./spark-reply-style.js";
 
 export function longWorkProgressGuidance(maxLength = messageUserMaxLength()): string {
-  return `When the task needs more than a quick one-line answer — multi-step work, research, or computer use — keep the user informed in chat. Post a short line with message_user when you begin (one sentence). On long work, add at most a few brief milestone updates (one or two sentences each), not one per tool call. Thinking stays private. message_user is capped at ${maxLength} characters — never put your final answer, a report, or long deliverables there. Always put the complete final answer in your normal reply only; never split the answer across message_user calls.`;
+  return `When the task needs more than a quick one-line answer — multi-step work, research, or computer use — keep the user informed in chat. Post a short line with message_user when you begin (one sentence). On long work, add at most a few brief milestone updates (one or two sentences each), not one per tool call. Thinking stays private. message_user is capped at ${maxLength} characters and will be silently cut off if you exceed it — never put your final answer, a report, or long deliverables there. Always put the complete final answer in your normal reply only; never split the answer across message_user calls.`;
 }
 
 export const ROUTINE_SILENT_REPLY_GUIDANCE = `If this routine's prompt says to stay silent when there is nothing to report, the entire final assistant reply must be exactly ${NO_RESPONSE} — no surrounding prose, no variants, no progress updates, no all-clear, and no meta note that you are staying silent. Do not call message_user unless you have something to report.`;
 
 export const REACTION_SILENT_REPLY_GUIDANCE = `The user reacted with an emoji to your message. Reply only if the reaction calls for it, such as a correction after 👎, a go-ahead on something you proposed, or a question. Otherwise the entire final assistant reply must be exactly ${NO_RESPONSE}, with no message_user call.`;
+
+export const GROUP_UNADDRESSED_REPLY_GUIDANCE = `This message went to every member of the group and names nobody. Members decide at about the same time, so do not count on seeing the others' replies. Before using any tools, decide whether it is for you. Answer when it falls within your own description, or when it asks each member to reply. Stay silent when it fits another member's description better, or when no member's description fits it and you are not the first member listed. To stay silent, the entire final assistant reply must be exactly ${NO_RESPONSE}, with no tool calls, never a dot, a placeholder or an empty message.`;
 
 export function runAllowsSilentEmpty(trigger: string): boolean {
   return trigger === "reaction" || trigger === "routine" || isBackgroundRunTrigger(trigger);

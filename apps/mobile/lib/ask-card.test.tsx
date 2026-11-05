@@ -1,5 +1,6 @@
 // @vitest-environment jsdom
 
+import type { LoginFieldInput } from "@rakazo/contracts";
 import type { CSSProperties, ReactNode } from "react";
 import { act } from "react";
 import { createRoot } from "react-dom/client";
@@ -12,9 +13,18 @@ type SheetProps = {
   destination: string;
   pending: boolean;
   onClose: () => void;
-  onSave: (password: string, username: string) => Promise<void>;
+  loginFields: readonly string[] | undefined;
+  onSave: (fields: LoginFieldInput[], remember: boolean) => Promise<void>;
 };
 let sheet: SheetProps;
+type EditorProps = {
+  kind: string;
+  ask?: boolean;
+  title?: string;
+  onClose: () => void;
+  onSave: (save: { value?: string }) => Promise<void>;
+};
+let editor: EditorProps;
 
 vi.mock("react-native", async () => {
   const { createElement } = await import("react");
@@ -23,6 +33,7 @@ vi.mock("react-native", async () => {
       ? Object.assign({}, ...style.map(flatten))
       : ((style as CSSProperties) ?? {});
   return {
+    Platform: { OS: "ios" },
     StyleSheet: { create: <T,>(styles: T) => styles },
     View: ({ children, style }: { children?: ReactNode; style?: unknown }) =>
       createElement("div", { style: flatten(style) }, children),
@@ -104,6 +115,18 @@ vi.mock("../components/native-action-button", async () => {
   };
 });
 
+vi.mock("../components/native-symbol", () => ({ NativeSymbol: () => null }));
+
+vi.mock("../components/vault-item-editor", async () => {
+  const { createElement } = await import("react");
+  return {
+    VaultItemEditor: (props: EditorProps) => {
+      editor = props;
+      return createElement("div", { "data-editor": props.kind });
+    },
+  };
+});
+
 vi.mock("../components/secret-ask-sheet", async () => {
   const { createElement } = await import("react");
   return {
@@ -169,7 +192,7 @@ it("caps a secret card's title at two lines and leaves question titles whole", a
   expect(container.textContent).toContain("login.example.test");
   expect(container.textContent).not.toContain("https://");
   expect(container.querySelector("input")).toBeNull();
-  expect(container.querySelector("button")?.textContent).toBe("Continue");
+  expect(container.querySelector("button")?.textContent).toBe("Add");
 
   expect((await render({ input: "secret", purpose: "otp" })).dataset.lines).toBe("2");
   expect((await render({})).dataset.lines).toBeUndefined();
@@ -185,10 +208,43 @@ const loginAsk = {
   },
 };
 
+const loginAnswer = [
+  { label: "Username", value: "example-user", hidden: false },
+  { label: "Password", value: "example-password", hidden: true },
+];
+
 async function openSheet() {
   await act(async () => container.querySelector("button")!.click());
   expect(sheet.destination).toBe("login.example.test");
 }
+
+it("asks for a login card's fields and answers with them and an empty answer", async () => {
+  const onAnswer = vi.fn(async () => undefined);
+  await render({ ...loginAsk, loginFields: ["Email", "PIN"] }, onAnswer);
+  await openSheet();
+  expect(sheet.loginFields).toEqual(["Email", "PIN"]);
+
+  await act(async () => sheet.onSave(loginAnswer, true));
+  expect(onAnswer).toHaveBeenCalledWith("", loginAnswer);
+  expect(container.textContent).toContain("Saved");
+});
+
+it("answers a login with Save to Vault off for this run only and reads Sent", async () => {
+  const onAnswer = vi.fn(async () => undefined);
+  await render(loginAsk, onAnswer);
+  await openSheet();
+
+  await act(async () => sheet.onSave(loginAnswer, false));
+  expect(onAnswer).toHaveBeenCalledWith("", loginAnswer, false);
+  expect(state("Sent")?.dataset.color).toBe("muted");
+  expect(container.textContent).not.toContain("Saved");
+});
+
+it("leaves a login card without requested fields to the default labels", async () => {
+  await render(loginAsk);
+  await openSheet();
+  expect(sheet.loginFields).toBeUndefined();
+});
 
 it("closes an open login sheet once the viewer is no longer the run's user", async () => {
   const renderAs = (canDismiss: boolean) =>
@@ -233,7 +289,7 @@ it("keeps a reopened sheet open when an earlier save completes", async () => {
   const first = sheet;
   let saving!: Promise<void>;
   await act(async () => {
-    saving = first.onSave("example-password", "example-user");
+    saving = first.onSave(loginAnswer, true);
   });
   await act(async () => first.onClose());
   await openSheet();
@@ -272,7 +328,7 @@ it("closes the current sheet and keeps the card saved when refresh fails", async
     ),
   );
   await openSheet();
-  await act(async () => sheet.onSave("example-password", "example-user"));
+  await act(async () => sheet.onSave(loginAnswer, true));
   expect(rpc).toHaveBeenCalledTimes(1);
   expect(refresh).toHaveBeenCalledTimes(1);
   expect(container.querySelector("[data-sheet]")).toBeNull();
@@ -280,6 +336,33 @@ it("closes the current sheet and keeps the card saved when refresh fails", async
   expect(container.textContent).not.toContain("Could not send answer");
   expect(container.querySelector("button")).toBeNull();
 });
+
+for (const [type, destination] of [
+  ["card", "Card"],
+  ["contact", "Contact"],
+] as const) {
+  it(`fills a ${type} in the vault editor and answers with its encoded value`, async () => {
+    const onAnswer = vi.fn(async () => undefined);
+    await render(
+      {
+        input: "secret",
+        purpose: "password",
+        credential: { name: "home", origin: "", auth: { type } },
+      },
+      onAnswer,
+    );
+    expect(container.textContent).toContain(destination);
+    expect(container.querySelector("input")).toBeNull();
+    await act(async () => button("Add").click());
+    expect(editor).toMatchObject({ kind: type, ask: true, title: longTitle });
+
+    await act(async () => editor.onSave({ value: '{"city":"Paris"}' }));
+    expect(onAnswer).toHaveBeenCalledWith('{"city":"Paris"}');
+    expect(container.textContent).toContain("Saved");
+    expect(container.querySelector("[data-editor]")).toBeNull();
+    expect(buttons()).toEqual([]);
+  });
+}
 
 function buttons() {
   return [...container.querySelectorAll("button")].map((item) => item.textContent);
@@ -332,6 +415,9 @@ it("shows a dismissed secret card as a muted Dismissed and a saved one as Saved"
   await render({ input: "secret", status: "answered", answer: "" });
   expect(state("Saved")?.dataset.color).toBe("success");
   expect(container.textContent).not.toContain("Dismissed");
+  // A login used for this run only reads Sent, also once the card is reloaded.
+  await render({ input: "secret", status: "answered", answer: "", remembered: false });
+  expect(state("Sent")?.dataset.color).toBe("success");
 });
 
 it("offers Dismiss only on secret cards", async () => {
@@ -343,9 +429,9 @@ it("dismisses a login card directly without opening the sheet", async () => {
   const onAnswer = vi.fn(async () => undefined);
   const onDismiss = vi.fn(async () => undefined);
   await render(loginAsk, onAnswer, onDismiss);
-  expect(buttons()).toEqual(["Continue", "Dismiss"]);
-  expect(button("Continue").dataset.prominence).toBe("primary");
-  expect(button("Dismiss").dataset.prominence).toBe("secondary");
+  expect(buttons()).toEqual(["Add", "Dismiss"]);
+  expect(button("Add").dataset.prominence).toBe("secondary");
+  expect(button("Dismiss").dataset.prominence).toBe("plain");
   await act(async () => button("Dismiss").click());
   expect(onDismiss).toHaveBeenCalledTimes(1);
   expect(onAnswer).not.toHaveBeenCalled();
@@ -395,12 +481,15 @@ for (const input of ["secret", "login"]) {
     const labels = [...container.querySelectorAll("button")].map((button) => button.textContent);
     expect(labels.includes("Dismiss")).toBe(canDismiss);
     // A login is filled in only by the run's user; see the credential card test below.
-    if (input === "login" && !canDismiss) return;
-    const primary = button(input === "login" ? "Continue" : "Save");
+    if (input === "login") {
+      expect(labels.includes("Add")).toBe(canDismiss);
+      return;
+    }
+    const primary = button("Save");
     expect(primary.style.flex).toBe("1 1 0%");
     expect(primary.dataset.fill).toBe("true");
     if (canDismiss) expect(button("Dismiss").style.flex).toBe(primary.style.flex);
-    expect(labels.includes(input === "login" ? "Continue" : "Save")).toBe(true);
+    expect(labels.includes("Save")).toBe(true);
   });
 }
 
@@ -458,6 +547,7 @@ it("uses the full column for wide asks and reserves only the visible avatar gutt
         status: "pending",
       },
     ],
+    mcpApproval: [{ kind: "mcp_approval", serverId: "server-1", name: "Example" }],
   };
   const measure = (kind: keyof typeof blocks, avatar: boolean, inGroup: boolean) =>
     messageRowLayout(blocks[kind] as MobileMessage["blocks"], {
@@ -480,11 +570,13 @@ it("uses the full column for wide asks and reserves only the visible avatar gutt
     expect(regular.menuMaxWidth).toBe(avatar ? 360 - gutter : 324);
   }
   // Connect cards take the full bubble width rather than shrinking to their button.
-  const card = measure("appConnect", false, false);
-  expect(card.width).toBe("90%");
-  expect(card.maxWidth).toBe("90%");
-  expect(card.menuMaxWidth).toBe(324);
-  expect(card.menuFullWidth).toBe(true);
+  for (const kind of ["appConnect", "mcpApproval"] as const) {
+    const card = measure(kind, false, false);
+    expect(card.width).toBe("90%");
+    expect(card.maxWidth).toBe("90%");
+    expect(card.menuMaxWidth).toBe(324);
+    expect(card.menuFullWidth).toBe(true);
+  }
 });
 
 it.each([

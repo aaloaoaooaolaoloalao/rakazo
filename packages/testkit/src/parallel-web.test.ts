@@ -60,6 +60,7 @@ function executorFixture(
     },
     attempt: {
       create: async () => ({ id: "attempt" }),
+      findMany: async () => [],
       update: vi.fn(),
       updateMany: async () => ({ count: 1 }),
     },
@@ -82,12 +83,14 @@ function executorFixture(
     },
     taughtSkill: { findMany: async () => [] },
     agentSecret: { findMany: async () => [] },
+    secret: { findMany: async () => [] },
     vaultCredential: { findMany: async () => [] },
     agentSkill: { findMany: async () => [] },
     scratchpadItem: { findMany: async () => [] },
     userActionApprovalRule: { findMany: async () => [] },
     userActionAutoReviewPreference: { findUnique: async () => ({ enabled: false }) },
     externalEffect: { findMany: async () => [] },
+    space: { findFirst: async () => null, findUnique: async () => null },
     usageRecord: { createMany: async () => ({ count: 1 }) },
     modelCreditEntry: { findUnique: async () => null },
     $transaction: async (work: (tx: unknown) => Promise<unknown>) => work(prisma),
@@ -95,6 +98,9 @@ function executorFixture(
   const finalizeRun = vi.fn(async () => ({ continuationRunId: null }));
   vi.stubEnv("WEB_PROVIDER", "parallel");
   vi.stubEnv("OPENROUTER_API_KEY", "fixture-openrouter-key");
+  vi.stubEnv("USER_TOKEN_LIMIT_DAILY", "0");
+  vi.stubEnv("USER_TOKEN_LIMIT_MONTHLY", "0");
+  vi.stubEnv("USER_TOKEN_LIMIT_PER_RUN", "0");
   const executor = createRunExecutor({
     prisma,
     runtime,
@@ -105,6 +111,8 @@ function executorFixture(
     events: { append: async () => undefined, claimSteering: async () => [], finalizeRun },
     jobs: { enqueue: async () => undefined },
     secrets: [],
+    secretStore: { load: vi.fn(async () => "") },
+    billingEnabled: false,
   } as unknown as Parameters<typeof createRunExecutor>[0]);
   return {
     peer,
@@ -200,7 +208,7 @@ describe("Parallel through the ordinary bot caller", () => {
                 request.messages.findLast((message) => message.role === "tool"),
               );
               expect(result).toContain("Page text");
-              expect(result).toContain("[Content truncated]");
+              expect(result).toContain("[Content truncated;");
               expect(result).not.toContain("Invalid Parallel MCP response");
               expect(result.length).toBeLessThan(1_000);
             },

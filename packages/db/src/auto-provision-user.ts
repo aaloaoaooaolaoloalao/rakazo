@@ -89,7 +89,6 @@ export async function ensureAutoProvisionedUser(
   const bot = await runAsTenant({ spaceId, userId: user.id }, () =>
     createRepos(prisma).createBot(actor, {
       name,
-      title: "",
       description: "",
       instructions: "",
       notifyOnFinish: true,

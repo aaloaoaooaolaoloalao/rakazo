@@ -10,6 +10,7 @@ import {
   createSpaceForMember,
   InvalidSpaceNameError,
   IsolationError,
+  recordAuditEvent,
   renameSpaceForMember,
   runAsSystem,
   runAsTenant,
@@ -20,6 +21,7 @@ import {
   setSpaceSettingOverride,
   spaceSettingOverrides,
 } from "@rakazo/db";
+import { otherSpaceOfBot } from "../bot-space.js";
 import type { RouterDeps } from "../router.js";
 import { listRoutinesDto } from "../routines.js";
 import { deleteSpaceWithContent } from "../space-deletion.js";
@@ -74,8 +76,17 @@ export function spacesRoutes(ctx: RouterContext) {
             if (error instanceof SpaceLimitError || error instanceof InvalidSpaceNameError) {
               throw new ORPCError("BAD_REQUEST", { message: error.message });
             }
+            if (error instanceof SpaceDeletionInProgressError) {
+              throw new ORPCError("CONFLICT", { message: error.message });
+            }
             throw error;
           }
+          await recordAuditEvent({
+            action: "space.created",
+            actor: { type: "user", id: context.actor.userId },
+            spaceId: space.id,
+            target: { type: "space", id: space.id, label: space.name },
+          });
           return {
             id: space.id,
             name: space.name,
@@ -95,12 +106,19 @@ export function spacesRoutes(ctx: RouterContext) {
       rename: authed.spaces.rename.handler(({ context, input }) =>
         asMemberOf(deps.prisma, context.actor, input.spaceId, async () => {
           try {
-            return await renameSpaceForMember(deps.prisma, {
+            const renamed = await renameSpaceForMember(deps.prisma, {
               currentSpaceId: context.actor.spaceId,
               userId: context.actor.userId,
               spaceId: input.spaceId,
               name: input.name,
             });
+            await recordAuditEvent({
+              action: "space.renamed",
+              actor: { type: "user", id: context.actor.userId },
+              spaceId: renamed.id,
+              target: { type: "space", id: renamed.id, label: renamed.name },
+            });
+            return renamed;
           } catch (error) {
             if (error instanceof SpaceNotFoundError) {
               throw new ORPCError("NOT_FOUND", { message: error.message });
@@ -123,12 +141,26 @@ export function spacesRoutes(ctx: RouterContext) {
       remove: authed.spaces.remove.handler(({ context, input }) =>
         asMemberOf(deps.prisma, context.actor, input.spaceId, async () => {
           try {
+            const space = await deps.prisma.space.findUnique({
+              where: { id: input.spaceId },
+              select: { organizationId: true, name: true },
+            });
             const { activeSpaceId } = await deleteSpaceWithContent(
               deps,
               context.actor,
               input.spaceId,
               context.signal,
             );
+            if (space) {
+              await recordAuditEvent({
+                action: "space.deleted",
+                actor: { type: "user", id: context.actor.userId },
+                spaceId: input.spaceId,
+                organizationId: space.organizationId,
+                spaceName: space.name,
+                target: { type: "space", id: input.spaceId, label: space.name },
+              });
+            }
             return { ok: true as const, activeSpaceId };
           } catch (error) {
             if (error instanceof SpaceNotFoundError) {
@@ -160,7 +192,12 @@ export function spacesRoutes(ctx: RouterContext) {
         groupRepos.listGroups(actor, { archived: true }),
       ]);
       const { bots, groups, botSections } = navigation.current;
-      const active = bots.find((bot) => bot.id === input.botId) ?? bots[0];
+      const requested = bots.find((bot) => bot.id === input.botId);
+      const botSpaceId =
+        input.botId && !requested
+          ? await otherSpaceOfBot(deps.prisma, actor, input.botId)
+          : undefined;
+      const active = requested ?? bots[0];
       const [thread, routines] = active
         ? await Promise.all([
             resolveThreadTarget(deps.prisma, actor, { botId: active.id }).then((target) =>
@@ -179,6 +216,7 @@ export function spacesRoutes(ctx: RouterContext) {
         thread,
         routines,
         spaces: navigation.spaces,
+        ...(botSpaceId ? { botSpaceId } : {}),
       };
     }),
   };
@@ -295,14 +333,16 @@ async function memberSpaceNavigation(
           parentBotId: bot.parentBotId,
           spaceId: bot.spaceId,
           name: bot.name,
-          title: bot.title,
+          title: "",
           color: bot.color,
+          avatarSet: bot.avatarSet,
           notifyOnFinish: bot.notifyOnFinish,
           pinned: bot.pinned,
           sectionId: bot.sectionId,
           unread: bot.unread,
           preview: bot.preview,
           status: bot.status,
+          threadStatus: bot.threadStatus,
           runErrorId: bot.runErrorId,
           updatedAt: bot.updatedAt,
         })),

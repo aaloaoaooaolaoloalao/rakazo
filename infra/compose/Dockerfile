@@ -1,4 +1,4 @@
-FROM node:22-bookworm@sha256:0557ac14e0d45d02ed563067b82856ca5e7aa3437fa28d98d4350ea9c3d9494a
+FROM node:24.22.1-bookworm@sha256:6449e19d8184d84062525b6a7524def03146c2cb04a7f08b076680d0e8e4240a
 # pnpm lives in the image so containers start without downloading it.
 ENV COREPACK_HOME=/usr/local/share/corepack
 RUN corepack enable
@@ -25,6 +25,7 @@ COPY --chmod=755 packages/core/package.json packages/core/
 COPY --chmod=755 packages/db/package.json packages/db/
 COPY --chmod=755 packages/logging/package.json packages/logging/
 COPY --chmod=755 packages/memory/package.json packages/memory/
+COPY --chmod=755 packages/page-kit/package.json packages/page-kit/
 COPY --chmod=755 packages/testkit/package.json packages/testkit/
 COPY --chmod=755 packages/ui-tokens/package.json packages/ui-tokens/
 COPY --chmod=755 packages/ui-web/package.json packages/ui-web/

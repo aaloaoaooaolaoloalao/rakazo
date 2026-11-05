@@ -1,28 +1,13 @@
 import { useLingui } from "@lingui/react/macro";
-import type { SpaceMemoryConfig, UsageSummary } from "@rakazo/contracts";
+import type { BotAvatarSet, SpaceMemoryConfig, UsageSummary } from "@rakazo/contracts";
 import { Button, Dialog, DialogClose, DialogContent, DialogTitle } from "@rakazo/ui-web";
-import {
-  Brain,
-  ChevronLeft,
-  ChevronRight,
-  CloudDownload,
-  Cpu,
-  CreditCard,
-  Gauge,
-  KeyRound,
-  MessageCircle,
-  Monitor,
-  Settings,
-  ShieldCheck,
-  Volume2,
-  XIcon,
-} from "lucide-react";
-import type { ComponentType } from "react";
+import { ChevronLeft, ChevronRight, XIcon } from "lucide-react";
 import { useCallback, useEffect, useRef, useState } from "react";
 import { ApprovalRulesSettings } from "../components/ApprovalRulesSettings";
 import { computersAreUnavailable } from "../components/ComputersUnavailableHint";
 import { SETTINGS_CONTENT_WIDTH, SettingsGroup, SettingsRow } from "../components/SettingsRows";
 import { VaultSettings } from "../components/VaultSettings";
+import { canChooseOwnComputer } from "../lib/computer-sandbox";
 import { desktopBridge } from "../lib/desktop";
 import { SpaceRpcProvider } from "../lib/space-rpc";
 import {
@@ -35,17 +20,14 @@ import { BillingSettingsPanel } from "./BillingSettingsPanel";
 import { MemorySettingsOverlay } from "./MemorySettingsOverlay";
 import { MessagingSettingsPanel } from "./MessagingSettingsPanel";
 import { ModelSettingsOverlay } from "./ModelSettingsOverlay";
+import { OrganizationSettingsPanel } from "./OrganizationSettingsPanel";
+import { PaymentWalletSettingsPanel } from "./PaymentWalletSettingsPanel";
 import { SpaceSettingsPanel } from "./SpaceSettingsPanel";
+import { useSettingsNavItems } from "./settings-nav";
 import type { SettingsSpace } from "./shell/dialogs";
 import type { SettingsSection } from "./shell-overlay";
 import { PRODUCT_UI } from "../product-ui";
 import { VoiceSettingsOverlay } from "./VoiceSettingsOverlay";
-
-type NavItem = {
-  id: SettingsSection;
-  label: string;
-  icon: ComponentType<{ className?: string; strokeWidth?: number }>;
-};
 
 export function SettingsOverlay({
   space,
@@ -62,10 +44,16 @@ export function SettingsOverlay({
   onNameSaved,
   timezone,
   onTimezoneChange,
+  botAvatarSet,
+  onBotAvatarSetChange,
+  onAccountImported,
+  onImportAgent,
   billingEnabled = false,
   sandboxProvider,
   onSandboxProviderChange,
+  canConfigureComputers = false,
   messagingEnabled = false,
+  paymentWalletProvider = null,
   memoryConfig,
   onMemoryConfigChange,
   onClose,
@@ -86,10 +74,18 @@ export function SettingsOverlay({
   onNameSaved?: () => Promise<void>;
   timezone: string | null;
   onTimezoneChange: (timezone: string) => Promise<void>;
+  botAvatarSet?: BotAvatarSet;
+  onBotAvatarSetChange?: (set: BotAvatarSet) => Promise<void>;
+  onAccountImported?: () => Promise<void>;
+  onImportAgent?: () => void;
   billingEnabled?: boolean;
   sandboxProvider?: string | null;
   onSandboxProviderChange?: (sandboxProvider: string) => void;
+  /** Admins choose where new computers run. */
+  canConfigureComputers?: boolean;
   messagingEnabled?: boolean;
+  /** The wallet this deployment lets bots spend from; none hides Wallet. */
+  paymentWalletProvider?: { id: string; name: string } | null;
   memoryConfig: SpaceMemoryConfig | null | undefined;
   onMemoryConfigChange: (config: SpaceMemoryConfig | null) => void;
   onClose: () => void;
@@ -104,7 +100,11 @@ export function SettingsOverlay({
   const [voiceBusy, setVoiceBusy] = useState(false);
   const [keepComputerRecovery, setKeepComputerRecovery] = useState(false);
   const recoveryHoldTimer = useRef<number | undefined>(undefined);
-  const showComputer = keepComputerRecovery || computersAreUnavailable(sandboxProvider);
+  const showComputer =
+    canConfigureComputers ||
+    keepComputerRecovery ||
+    computersAreUnavailable(sandboxProvider) ||
+    canChooseOwnComputer(sandboxProvider);
   const showUpdates = Boolean(desktopBridge()?.update);
   const showModels = !PRODUCT_UI.hideUserModelSettings;
   const showVoice = !PRODUCT_UI.hideUserVoiceSettings;
@@ -113,6 +113,7 @@ export function SettingsOverlay({
     (requestedSection === "computer" && !showComputer) ||
     (requestedSection === "billing" && !billingEnabled) ||
     (requestedSection === "messaging" && !messagingEnabled) ||
+    (requestedSection === "wallet" && !paymentWalletProvider) ||
     (requestedSection === "updates" && !showUpdates) ||
     (requestedSection === "models" && !showModels) ||
     (requestedSection === "voice" && !showVoice)
@@ -148,21 +149,15 @@ export function SettingsOverlay({
     }
   }, [section, onUsageOpen]);
 
-  const navItems: NavItem[] = [
-    { id: "general", label: t`General`, icon: Settings },
-    ...(showModels ? [{ id: "models" as const, label: t`Models`, icon: Cpu }] : []),
-    ...(showVoice ? [{ id: "voice" as const, label: t`Voice`, icon: Volume2 }] : []),
-    { id: "confirmations", label: t`Approvals`, icon: ShieldCheck },
-    { id: "vault", label: t`Vault`, icon: KeyRound },
-    ...(messagingEnabled
-      ? [{ id: "messaging" as const, label: t`Messaging`, icon: MessageCircle }]
-      : []),
-    { id: "memory", label: t`Memory`, icon: Brain },
-    { id: "usage", label: t`Usage`, icon: Gauge },
-    ...(showComputer ? [{ id: "computer" as const, label: t`Computer`, icon: Monitor }] : []),
-    ...(billingEnabled ? [{ id: "billing" as const, label: t`Billing`, icon: CreditCard }] : []),
-    ...(showUpdates ? [{ id: "updates" as const, label: t`Updates`, icon: CloudDownload }] : []),
-  ];
+  const navItems = useSettingsNavItems({
+    messaging: messagingEnabled,
+    wallet: Boolean(paymentWalletProvider),
+    computer: showComputer,
+    billing: billingEnabled,
+    updates: showUpdates,
+    models: showModels,
+    voice: showVoice,
+  });
 
   useEffect(() => {
     const nav = navRef.current;
@@ -192,7 +187,17 @@ export function SettingsOverlay({
       nav.removeEventListener("scroll", measure);
       observer?.disconnect();
     };
-  }, [section, showComputer, billingEnabled, messagingEnabled, showUpdates, showModels, showVoice, i18n.locale]);
+  }, [
+    section,
+    showComputer,
+    billingEnabled,
+    messagingEnabled,
+    paymentWalletProvider,
+    showUpdates,
+    showModels,
+    showVoice,
+    i18n.locale,
+  ]);
 
   function scrollSections(direction: number) {
     const nav = navRef.current;
@@ -270,7 +275,7 @@ export function SettingsOverlay({
               ref={navRef}
               data-testid="settings-nav"
               aria-label={t`Settings`}
-              className="flex min-w-0 flex-1 flex-row gap-1 overflow-x-auto py-3 md:w-[200px] md:shrink-0 md:flex-none md:flex-col md:overflow-y-auto md:border-e md:border-border md:px-3 md:py-4"
+              className="flex min-w-0 flex-1 flex-row gap-1 overflow-x-auto py-3 md:w-[200px] md:shrink-0 md:flex-none md:flex-col md:overflow-y-auto md:border-e md:border-border md:bg-sidebar md:px-3 md:py-4"
             >
               {navItems.map((item) => {
                 const Icon = item.icon;
@@ -365,6 +370,10 @@ export function SettingsOverlay({
                         onNameSaved={onNameSaved}
                         timezone={timezone}
                         onTimezoneChange={onTimezoneChange}
+                        botAvatarSet={botAvatarSet}
+                        onBotAvatarSetChange={onBotAvatarSetChange}
+                        onAccountImported={onAccountImported}
+                        onImportAgent={onImportAgent}
                       />
                       {/* One space is just the app, so there is nothing to tell apart or manage. */}
                       {spaces.length > 1 && onOpenSpace ? (
@@ -400,9 +409,15 @@ export function SettingsOverlay({
                       onBusyChange={setVoiceBusy}
                     />
                   ) : null}
+                  {section === "organization" ? (
+                    <OrganizationSettingsPanel onBusyChange={setVoiceBusy} />
+                  ) : null}
                   {section === "confirmations" ? <ApprovalRulesSettings scope="account" /> : null}
                   {section === "vault" ? <VaultSettings scope="account" /> : null}
                   {section === "messaging" && messagingEnabled ? <MessagingSettingsPanel /> : null}
+                  {section === "wallet" && paymentWalletProvider ? (
+                    <PaymentWalletSettingsPanel provider={paymentWalletProvider} />
+                  ) : null}
                   {section === "usage" ? (
                     <UsageSettingsPanel usage={usage} panelRef={usageRef} />
                   ) : null}
@@ -414,6 +429,7 @@ export function SettingsOverlay({
                         holdComputerRecovery();
                       }}
                       onRecoveryDismissed={releaseComputerRecovery}
+                      canConfigureComputers={canConfigureComputers}
                     />
                   ) : null}
                   {section === "billing" && billingEnabled ? <BillingSettingsPanel /> : null}

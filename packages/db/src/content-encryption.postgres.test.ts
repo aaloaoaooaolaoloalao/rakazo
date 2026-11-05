@@ -196,6 +196,27 @@ describePostgres("content encryption (PostgreSQL)", () => {
       await raw.query(`DELETE FROM messages WHERE id = $1`, [message.id]);
     }));
 
+  it("finds an encrypted message by its attachment's name without storing the name in plaintext", () =>
+    runAsSystem("test fixture", async () => {
+      const message = await createThreadMessage(prisma, {
+        threadId,
+        role: "user",
+        blocks: [
+          {
+            kind: "file",
+            artifactId: `enc-art-${suffix}`,
+            name: "harbor-survey.pdf",
+            mimeType: "application/pdf",
+            size: 10,
+          },
+        ],
+      });
+      expect(await rawBlocks(message.id)).not.toContain("harbor");
+      const found = await searchHistory(prisma, scope, { query: "harbor survey" });
+      expect(found.messages.map((m) => m.messageId)).toEqual([message.id]);
+      await prisma.message.delete({ where: { id: message.id }, select: { id: true } });
+    }));
+
   it("reads and searches plaintext rows next to encrypted ones, then migrates them", () =>
     runAsSystem("test fixture", async () => {
       const plaintextId = `enc-plain-${suffix}`;
@@ -234,6 +255,18 @@ describePostgres("content encryption (PostgreSQL)", () => {
         [threadId],
       );
       expect(left.rows[0].n).toBe(0);
+      // Variants across the user's chats verify each query against the decrypted text.
+      const variants = await searchHistory(
+        prisma,
+        { ...scope, allowMyChats: true },
+        { scope: "my_chats", queries: ["legacy pelicans", "fresh note"] },
+      );
+      expect(
+        variants.messages.map((m) => [m.text, m.matchedQueryIndexes, m.threadId]).sort(),
+      ).toEqual([
+        ["fresh note about pelicans", [1], threadId],
+        ["legacy note about pelicans", [0], threadId],
+      ]);
 
       const excerpt = await readHistory(prisma, scope, { messageId: plaintextId, limit: 1 });
       expect(excerpt.messages[0]!.text).toBe("legacy note about pelicans");
