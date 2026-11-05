@@ -38,7 +38,15 @@ import {
   modelSupportsRole,
   OPENAI_COMPATIBLE_PROVIDER_ID,
 } from "@rakazo/contracts";
-import { createGroupRepos, createRepos, recordSecurityEvent, runAsTenant } from "@rakazo/db";
+import {
+  assertUserEmailVerifiedForAgents,
+  createGroupRepos,
+  createRepos,
+  EmailVerificationRequiredError,
+  recordSecurityEvent,
+  runAsTenant,
+} from "@rakazo/db";
+import { procedureRequiresVerifiedEmail } from "@rakazo/core";
 import { createAgentImportServices } from "../agent-import-services.js";
 import { createAgentSkillsService } from "../agent-skills.js";
 import { createBotRemoval } from "../bot-removal.js";
@@ -365,6 +373,19 @@ export function createRouterContext(deps: RouterDeps) {
       const actor = context.actor;
       if (!actor) throw new ORPCError("UNAUTHORIZED");
       return asTenant(actor, () => next({ context: { ...context, actor } }));
+    })
+    .use(async ({ context, next, path }) => {
+      if (procedureRequiresVerifiedEmail(path)) {
+        try {
+          await assertUserEmailVerifiedForAgents(deps.prisma, context.actor!.userId);
+        } catch (error) {
+          if (error instanceof EmailVerificationRequiredError) {
+            throw new ORPCError("FORBIDDEN", { message: error.message });
+          }
+          throw error;
+        }
+      }
+      return next();
     })
     .use(async ({ context, next, path }, input) => {
       const result = await next();

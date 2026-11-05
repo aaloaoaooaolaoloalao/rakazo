@@ -1,8 +1,8 @@
 export * from "./account-export.js";
 export * from "./approval-settings.js";
 export * from "./artifact-versions.js";
-export * from "./auto-provision-user.js";
 export * from "./audit-events.js";
+export * from "./auth-email-rate-bucket.js";
 export * from "./availability.js";
 export * from "./billing.js";
 export * from "./board.js";
@@ -54,5 +54,6 @@ export * from "./transaction-retry.js";
 export * from "./unread-inbox-chats.js";
 export * from "./usage.js";
 export * from "./token-budget.js";
+export * from "./user-email-verification.js";
 export * from "./rate-buckets.js";
 export * from "./voice-credentials.js";

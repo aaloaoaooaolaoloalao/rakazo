@@ -53,6 +53,10 @@ describe("auth policy", () => {
           count: vi.fn().mockRejectedValue(error),
           create: vi.fn().mockRejectedValue(error),
         },
+        apiRateBucket: {
+          upsert: vi.fn().mockResolvedValue({ count: 1, key: "auth-email:test@example.test", windowStart: new Date() }),
+          deleteMany: vi.fn().mockResolvedValue({ count: 0 }),
+        },
       } as never,
       {
         secret: "offline-auth-secret-at-least-32-characters",

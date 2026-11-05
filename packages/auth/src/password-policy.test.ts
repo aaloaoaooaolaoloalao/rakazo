@@ -10,10 +10,16 @@ vi.mock("better-auth/adapters/prisma", async () => {
       memoryAdapter(prisma.authData),
   };
 });
-vi.mock("@rakazo/db", () => ({
-  bootstrapUserSpace: vi.fn(async () => ({ spaceId: "space-1" })),
-  recordSecurityEvent: vi.fn(async () => undefined),
-}));
+vi.mock("@rakazo/db", async (importOriginal) => {
+  const actual = await importOriginal<typeof import("@rakazo/db")>();
+  return {
+    ...actual,
+    bootstrapUserSpace: vi.fn(async () => ({ spaceId: "space-1" })),
+    recordSecurityEvent: vi.fn(async () => undefined),
+    takeAuthCredentialEmailBucket: vi.fn(async () => 1),
+    authCredentialEmailRetryAfterSeconds: actual.authCredentialEmailRetryAfterSeconds,
+  };
+});
 
 const baseURL = "http://auth.example.test";
 const webOrigin = "http://web.example.test";
@@ -36,6 +42,10 @@ function fixture({ breachedPasswordCheck = false } = {}) {
       })),
     },
     spaceMember: { findFirst: vi.fn(async () => ({ spaceId: "space-1" })) },
+    apiRateBucket: {
+      upsert: vi.fn(async () => ({ count: 1, key: "auth-email:fixture", windowStart: new Date() })),
+      deleteMany: vi.fn(async () => ({ count: 0 })),
+    },
   };
   const log = vi.fn();
   const auth = createAuth(prisma as never, {

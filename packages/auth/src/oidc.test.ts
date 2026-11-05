@@ -80,6 +80,10 @@ function setup(options: Partial<AuthEnv> = {}, hasMembership = true) {
       }),
     },
     organization: { deleteMany: vi.fn(async () => ({})) },
+    apiRateBucket: {
+      upsert: vi.fn(async () => ({ count: 1, key: "auth-email:fixture", windowStart: new Date() })),
+      deleteMany: vi.fn(async () => ({ count: 0 })),
+    },
   };
   prisma.$transaction = vi.fn(async (operations: (tx: unknown) => Promise<unknown>) =>
     operations(prisma),

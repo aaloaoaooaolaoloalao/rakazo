@@ -141,6 +141,10 @@ function fixture({
       }),
     },
     organization: { deleteMany: vi.fn(async () => ({ count: 0 })) },
+    apiRateBucket: {
+      upsert: vi.fn(async () => ({ count: 1, key: "auth-email:fixture", windowStart: new Date() })),
+      deleteMany: vi.fn(async () => ({ count: 0 })),
+    },
     spaceMember: {
       findFirst: vi.fn(async ({ where }: { where: { userId: string | { in: string[] } } }) => {
         const ids = typeof where.userId === "string" ? [where.userId] : where.userId.in;

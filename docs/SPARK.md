@@ -24,6 +24,8 @@ Public HTTPS host: `https://34-165-87-142.sslip.io` (sslip.io; replace with a re
 | **`spark/main`** | Integration branch = PR #3 + web flags from hide-model (matches **intended** full product source; images on server were built per-service as above). |
 | (adapters) live progress in chat | `message_user` start + milestone guidance; faster mid-turn budget (`user-progress.ts`); stream interim text as normal bot bubbles on iOS. |
 | (adapters) concise chat replies | System prompt adds plain-language, short-by-default reply guidance (`spark-reply-style.ts`); pairs with per-user token budget. |
+| (security) verified email for agents | With transactional email configured, RPC paths that start runs or boot computers require `emailVerified`; auto-provision skips until verified (`REQUIRE_VERIFIED_EMAIL_FOR_AGENTS`). |
+| (security) credential rate limits | Better Auth per-IP plus per-email buckets (10 / 15 min) on sign-in and sign-up routes. |
 
 `product/apple-signin-auto-computer` — **not present** on the fork at last check.
 

@@ -78,7 +78,14 @@ const NOT_PASSED: Record<string, string> = {
  */
 const DENIED = {
   api: ["DATABASE_MIGRATION_URL"],
-  worker: ["BETTER_AUTH_SECRET", "DATABASE_MIGRATION_URL"],
+  worker: [
+    "BETTER_AUTH_SECRET",
+    "DATABASE_MIGRATION_URL",
+    "EMAIL_PROVIDER",
+    "EMAIL_API_KEY",
+    "SMTP_URL",
+    "REQUIRE_VERIFIED_EMAIL_FOR_AGENTS",
+  ],
 } as const;
 
 /** Reads a source scan cannot see: names held in constants or read by third-party SDKs. */
