@@ -3,6 +3,8 @@ import { describe, expect, it } from "vitest";
 import { listPiCatalog } from "./pi-models.js";
 import { resolveRuntimeModel } from "./pi-runtime-models.js";
 import {
+  applyMistralImageLimit,
+  MISTRAL_MAX_IMAGES_PER_PROMPT,
   mistralReasoningEffort,
   registerSparkModelOverrides,
   SPARK_GLM_FLASH_ID,
@@ -27,6 +29,14 @@ describe("spark model overrides", () => {
     expect(flash.thinkingLevelMap?.medium).toBeNull();
     expect(mistralReasoningEffort(flash, "medium")).toBe("high");
     expect(mistralReasoningEffort(flash, null)).toBe("high");
+  });
+
+  it("caps Mistral at eight images and leaves other providers alone", () => {
+    expect(applyMistralImageLimit("mistral")).toBe(MISTRAL_MAX_IMAGES_PER_PROMPT);
+    expect(applyMistralImageLimit("mistral", 3)).toBe(3);
+    expect(applyMistralImageLimit("mistral", 32)).toBe(MISTRAL_MAX_IMAGES_PER_PROMPT);
+    expect(applyMistralImageLimit("anthropic")).toBeUndefined();
+    expect(applyMistralImageLimit("anthropic", 16)).toBe(16);
   });
 
   it("leaves existing Mistral thinking maps alone", () => {

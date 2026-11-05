@@ -27,6 +27,7 @@ const DEFAULT_PAGE_STATE_RESULTS_TO_KEEP = 3;
 const STALE_PAGE_STATE_MIN_CHARS = 1_000;
 const STALE_PAGE_STATE_NOTE =
   "[Earlier page state trimmed to save context. Facts you still need from that page should already be in your notes or tracker; otherwise take a fresh snapshot.]";
+const STALE_SCREENSHOT_NOTE = "[Earlier screenshot omitted to stay under the model image limit.]";
 
 /**
  * Replace all but the most recent large page-state tool results with a short note. The runtime
@@ -75,9 +76,10 @@ function textLength(message: ToolResultMessage): number {
 export function pruneComputerScreenshotContext(
   messages: Message[],
   maxImagesPerPrompt?: number,
+  screenshotsToKeep = DEFAULT_COMPUTER_SCREENSHOTS_TO_KEEP,
 ): Message[] {
   const imageLimit = normalizedImageLimit(maxImagesPerPrompt);
-  let remaining = DEFAULT_COMPUTER_SCREENSHOTS_TO_KEEP;
+  let remaining = Math.max(0, Math.floor(screenshotsToKeep));
   if (imageLimit !== undefined) {
     const nonScreenshotImages = messages.reduce(
       (count, message) =>
@@ -101,17 +103,22 @@ export function pruneComputerScreenshotContext(
       continue;
     }
     transformed ??= [...messages];
-    transformed[index] = {
-      ...message,
-      content: message.content.filter((part) => part.type !== "image"),
-    };
+    transformed[index] = omitScreenshotImage(message);
   }
   return transformed ?? messages;
 }
 
 /** What a rebuild drops: stale page state, and screenshots over the default or model limit. */
-export function pruneForRebuild(messages: Message[], maxImagesPerPrompt?: number): Message[] {
-  return pruneComputerScreenshotContext(pruneStalePageStateContext(messages), maxImagesPerPrompt);
+export function pruneForRebuild(
+  messages: Message[],
+  maxImagesPerPrompt?: number,
+  screenshotsToKeep?: number,
+): Message[] {
+  return pruneComputerScreenshotContext(
+    pruneStalePageStateContext(messages),
+    maxImagesPerPrompt,
+    screenshotsToKeep,
+  );
 }
 
 /** A model's image limit as a whole number, or undefined when it has none or it isn't finite. */
@@ -124,6 +131,22 @@ export function imagePartCount(message: Message): number {
   if (!Array.isArray(message.content)) return 0;
   return (message.content as Array<{ type: string }>).filter((part) => part.type === "image")
     .length;
+}
+
+export function computerScreenshotImageCount(messages: Message[]): number {
+  return messages.reduce(
+    (count, message) =>
+      count + (isComputerScreenshotMessage(message) ? imagePartCount(message) : 0),
+    0,
+  );
+}
+
+function omitScreenshotImage(message: ToolResultMessage): ToolResultMessage {
+  const content = message.content.filter((part) => part.type !== "image");
+  return {
+    ...message,
+    content: content.length > 0 ? content : [{ type: "text", text: STALE_SCREENSHOT_NOTE }],
+  };
 }
 
 function isComputerScreenshotMessage(message: Message | undefined): message is ToolResultMessage {

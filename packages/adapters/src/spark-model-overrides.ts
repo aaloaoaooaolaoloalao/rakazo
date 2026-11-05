@@ -1,4 +1,27 @@
 import type { Model, MutableModels, ThinkingLevelMap } from "@earendil-works/pi-ai";
+import { canonicalPiProviderId } from "@rakazo/contracts";
+
+/** Mistral Conversations API returns 400 code 3051 above this many images. */
+export const MISTRAL_MAX_IMAGES_PER_PROMPT = 8;
+
+/** Last screenshots to keep for Mistral computer use; older ones become a short note. */
+export const MISTRAL_COMPUTER_SCREENSHOTS_TO_KEEP = 3;
+
+export function isMistralProvider(provider: string): boolean {
+  return canonicalPiProviderId(provider) === "mistral";
+}
+
+/** Hosted Mistral gets the API cap; a configured limit is still clamped to 8. */
+export function applyMistralImageLimit(
+  provider: string,
+  maxImagesPerPrompt?: number,
+): number | undefined {
+  if (!isMistralProvider(provider)) return maxImagesPerPrompt;
+  if (maxImagesPerPrompt !== undefined && Number.isFinite(maxImagesPerPrompt)) {
+    return Math.min(MISTRAL_MAX_IMAGES_PER_PROMPT, Math.max(0, Math.floor(maxImagesPerPrompt)));
+  }
+  return MISTRAL_MAX_IMAGES_PER_PROMPT;
+}
 
 /** Mistral hosts this id, but pi-ai 1.3.0's catalog only has `zai-glm-5-3`. */
 export const SPARK_GLM_FLASH_ID = "zai-glm-5-3-flash";
