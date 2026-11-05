@@ -1,7 +1,13 @@
 import type { MessageBlock } from "@rakazo/contracts";
 import { isBackgroundRunTrigger } from "@rakazo/core";
 import { NO_RESPONSE } from "./silent-reply.js";
+import {
+  SPARK_CONCISE_REPLY_GUIDANCE,
+  sparkConciseReplyGuidanceForTrigger,
+} from "./spark-reply-style.js";
 import { messageUserMaxLength } from "./user-progress.js";
+
+export { SPARK_CONCISE_REPLY_GUIDANCE } from "./spark-reply-style.js";
 
 export function longWorkProgressGuidance(maxLength = messageUserMaxLength()): string {
   return `When the task needs more than a quick one-line answer — multi-step work, research, or computer use — keep the user informed in chat. Post a short line with message_user when you begin (one sentence). On long work, add at most a few brief milestone updates (one or two sentences each), not one per tool call. Thinking stays private. message_user is capped at ${maxLength} characters — never put your final answer, a report, or long deliverables there. Always put the complete final answer in your normal reply only; never split the answer across message_user calls.`;
@@ -28,10 +34,16 @@ export function runPromotesMidTurnNarration(trigger: string): boolean {
 export const TICKET_SILENT_REPLY_GUIDANCE =
   "Ticket work is reported on the board, not in chat. Put updates and results in ticket_comment and keep the ticket status current with ticket_update. Use the existing ask or approval mechanism when user input is needed. Leave the final reply empty.";
 
-export function runReplyGuidance(trigger: string): string {
+export function progressReplyGuidance(trigger: string): string {
   if (trigger === "reaction") return REACTION_SILENT_REPLY_GUIDANCE;
   if (isBackgroundRunTrigger(trigger)) return TICKET_SILENT_REPLY_GUIDANCE;
   return runAllowsSilentEmpty(trigger) ? ROUTINE_SILENT_REPLY_GUIDANCE : longWorkProgressGuidance();
+}
+
+export function runReplyGuidance(trigger: string): string {
+  const progress = progressReplyGuidance(trigger);
+  const concise = sparkConciseReplyGuidanceForTrigger(trigger);
+  return concise ? `${concise} ${progress}` : progress;
 }
 
 export function replyGuidanceForOfferedTools(
@@ -39,8 +51,11 @@ export function replyGuidanceForOfferedTools(
   disabled?: ReadonlySet<string>,
 ): string | undefined {
   if (!disabled?.has("message_user")) return guidance;
-  if (guidance === longWorkProgressGuidance()) {
-    return "Always put the complete final answer in your normal reply.";
+  const progress = longWorkProgressGuidance();
+  if (guidance === progress || guidance.endsWith(` ${progress}`)) {
+    const prefix = guidance.slice(0, guidance.length - progress.length).trim();
+    const shortProgress = "Always put the complete final answer in your normal reply.";
+    return prefix ? `${prefix} ${shortProgress}` : shortProgress;
   }
   if (guidance === REACTION_SILENT_REPLY_GUIDANCE) {
     return guidance.replace(", with no message_user call.", ".");

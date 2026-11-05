@@ -12,6 +12,8 @@ APNs is added beside Expo. A row with provider `apns` is sent to Apple. Existing
 
 `APNS_KEY_P8` or `APNS_KEY_PATH`, `APNS_KEY_ID`, `APNS_TEAM_ID` (default team `WNAP7G2A58`), `APNS_TOPIC` (default `com.alonshelly.sparkai`), `APNS_ENV` (`production` or `sandbox`).
 
+Optional second key for Xcode debug tokens (`environment: sandbox` on the device row): `APNS_SANDBOX_KEY_P8` or `APNS_SANDBOX_KEY_PATH`, plus `APNS_SANDBOX_KEY_ID`. When set, sandbox device tokens are signed with that key; otherwise the primary `APNS_KEY_*` is used (production-only keys return `403 BadEnvironmentKeyInToken` against the sandbox host).
+
 Do not commit the `.p8` file. Put the path or the key only in the server environment.
 
 ## Manual

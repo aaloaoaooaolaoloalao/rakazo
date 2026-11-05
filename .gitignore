@@ -13,7 +13,11 @@ playwright-report
 *.tsbuildinfo
 .env
 .env.local
+.env.*
 .env.*.local
+*.p8
+*.pem
+AuthKey_*.p8
 data
 apps/**/data
 .tmp

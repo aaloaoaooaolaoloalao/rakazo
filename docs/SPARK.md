@@ -23,6 +23,7 @@ Public HTTPS host: `https://34-165-87-142.sslip.io` (sslip.io; replace with a re
 | `spark/e2b-computer-1vcpu-2gb` | Cheaper E2B computer template (build tooling; not required for current docker deploy). |
 | **`spark/main`** | Integration branch = PR #3 + web flags from hide-model (matches **intended** full product source; images on server were built per-service as above). |
 | (adapters) live progress in chat | `message_user` start + milestone guidance; faster mid-turn budget (`user-progress.ts`); stream interim text as normal bot bubbles on iOS. |
+| (adapters) concise chat replies | System prompt adds plain-language, short-by-default reply guidance (`spark-reply-style.ts`); pairs with per-user token budget. |
 
 `product/apple-signin-auto-computer` — **not present** on the fork at last check.
 
