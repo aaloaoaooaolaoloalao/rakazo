@@ -1,6 +1,7 @@
 export * from "./account-export.js";
 export * from "./approval-settings.js";
 export * from "./artifact-versions.js";
+export * from "./auto-provision-user.js";
 export * from "./audit-events.js";
 export * from "./auth-email-rate-bucket.js";
 export * from "./availability.js";
