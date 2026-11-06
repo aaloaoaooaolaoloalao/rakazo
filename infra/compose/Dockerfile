@@ -1,4 +1,4 @@
-FROM node:22.22.2-bookworm
+FROM node:22.22.3-bookworm
 # pnpm lives in the image so containers start without downloading it.
 ENV COREPACK_HOME=/usr/local/share/corepack
 RUN corepack enable
