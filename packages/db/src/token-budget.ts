@@ -163,7 +163,7 @@ async function spent(
     where: { userId, ...(runId ? { runId } : {}), createdAt: { gte: since } },
     _sum: { inputTokens: true, outputTokens: true },
   });
-  return (row._sum.inputTokens ?? 0) + (row._sum.outputTokens ?? 0);
+  return (row._sum?.inputTokens ?? 0) + (row._sum?.outputTokens ?? 0);
 }
 
 async function reserved(
@@ -176,5 +176,5 @@ async function reserved(
     where: { userId, ...(runId ? { runId } : {}), createdAt: { gte: since } },
     _sum: { tokens: true },
   });
-  return row._sum.tokens ?? 0;
+  return row._sum?.tokens ?? 0;
 }

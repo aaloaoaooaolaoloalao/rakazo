@@ -25,6 +25,15 @@ describePostgres("one computer per user (PostgreSQL)", () => {
     return { userId, spaceId, email, isDeploymentOwner: false };
   }
 
+  async function botComputerId(botId: string): Promise<string | null> {
+    return (
+      await asSystem(prisma).bot.findUnique({
+        where: { id: botId },
+        select: { computerId: true },
+      })
+    )?.computerId ?? null;
+  }
+
   afterAll(async () => {
     if (prisma) {
       await asSystem(prisma).bot.deleteMany({ where: { userId } });
@@ -66,14 +75,13 @@ describePostgres("one computer per user (PostgreSQL)", () => {
     const first = await runAsTenant({ spaceId: spaceA, userId }, () =>
       createRepos(prisma).createBot(actor(spaceA), {
         name: "BotA",
-        title: "",
         description: "",
         instructions: "",
         notifyOnFinish: false,
         computerMode: "dedicated",
       }),
     );
-    expect(first.computer?.scope).toBe("team");
+    expect(first.computerMode).toBe("team");
     expect(await asSystem(prisma).computer.count({ where: { userId } })).toBe(1);
 
     const other = await runAsSystem("second space", () =>
@@ -88,20 +96,19 @@ describePostgres("one computer per user (PostgreSQL)", () => {
     const second = await runAsTenant({ spaceId: spaceB, userId }, () =>
       createRepos(prisma).createBot(actor(spaceB), {
         name: "BotB",
-        title: "",
         description: "",
         instructions: "",
         notifyOnFinish: false,
       }),
     );
-    expect(second.computerId).toBe(first.computerId);
+    expect(await botComputerId(second.id)).toBe(await botComputerId(first.id));
     expect(await asSystem(prisma).computer.count({ where: { userId } })).toBe(1);
 
     const switched = await runAsTenant({ spaceId: spaceA, userId }, () =>
       createRepos(prisma).setBotComputer(actor(spaceA), first.id, "dedicated"),
     );
-    expect(switched.computer?.scope).toBe("team");
-    expect(switched.computerId).toBe(first.computerId);
+    expect(switched.computerMode).toBe("team");
+    expect(await botComputerId(switched.id)).toBe(await botComputerId(first.id));
   });
 
   it("allows restoring an archived bot when the user is under the cap", async () => {

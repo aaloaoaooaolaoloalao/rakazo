@@ -38,8 +38,8 @@ export function tokenLimitExemptEmails(env: NodeJS.ProcessEnv = process.env): Se
   return new Set(
     (env.USER_TOKEN_LIMIT_EXEMPT_EMAILS ?? "")
       .split(",")
-      .map((email) => email.trim().toLowerCase())
-      .filter((email) => email.length > 0),
+      .map((email: string) => email.trim().toLowerCase())
+      .filter((email: string) => email.length > 0),
   );
 }
 

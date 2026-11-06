@@ -2,6 +2,7 @@ import type { Actor } from "@rakazo/contracts";
 import {
   AUTO_PROVISION_DEFAULT_BOT_SPAWN_KEY,
   type AutoProvisionEnv,
+  agentsRequireVerifiedEmail,
   autoProvisionDefaultBotName,
   autoProvisionMaxComputersPerUser,
   autoProvisionNewUsersEnabled,
@@ -15,7 +16,7 @@ export type EnsureAutoProvisionResult = {
   /** A new default bot was created in this call. */
   created: boolean;
   botId: string | null;
-  skippedReason?: "disabled" | "existing_bot" | "computer_cap";
+  skippedReason?: "disabled" | "existing_bot" | "computer_cap" | "unverified_email";
 };
 
 async function countLiveComputersForUser(prisma: PrismaClient, userId: string): Promise<number> {
@@ -46,6 +47,16 @@ export async function ensureAutoProvisionedUser(
 ): Promise<EnsureAutoProvisionResult> {
   if (!autoProvisionNewUsersEnabled(env)) {
     return { created: false, botId: null, skippedReason: "disabled" };
+  }
+
+  if (agentsRequireVerifiedEmail(env)) {
+    const verified = await prisma.user.findUnique({
+      where: { id: user.id },
+      select: { emailVerified: true },
+    });
+    if (!verified?.emailVerified) {
+      return { created: false, botId: null, skippedReason: "unverified_email" };
+    }
   }
 
   const existingSpawn = await prisma.bot.findFirst({
@@ -89,7 +100,6 @@ export async function ensureAutoProvisionedUser(
   const bot = await runAsTenant({ spaceId, userId: user.id }, () =>
     createRepos(prisma).createBot(actor, {
       name,
-      title: "",
       description: "",
       instructions: "",
       notifyOnFinish: true,

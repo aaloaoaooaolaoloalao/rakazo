@@ -177,8 +177,8 @@ function setup(
   } as unknown as RouterDeps;
   const actor = options.actor ?? owner;
   const handler = new RPCHandler(createRouter(deps));
-  const call = async (procedure: string, input: unknown) =>
-    handler.handle(
+  const call = async (procedure: string, input: unknown) => {
+    const { response } = await handler.handle(
       new Request(`http://127.0.0.1/rpc/${procedure}`, {
         method: "POST",
         headers: { "content-type": "application/json" },
@@ -186,6 +186,9 @@ function setup(
       }),
       { prefix: "/rpc", context: { actor } },
     );
+    if (!response) throw new Error(`no response for ${procedure}`);
+    return { response };
+  };
   const roles = () => roleRows;
   // The main model's fallbacks in the shape `existing` takes.
   const rows = () =>
@@ -468,7 +471,34 @@ describe("Space model overrides", () => {
   });
 });
 
+const visionModel = listPiCatalog().find(
+  (entry) => entry.provider === "openrouter" && !entry.placeholder && entry.images,
+)!;
+const textOnlyModel = listPiCatalog().find(
+  (entry) => entry.provider === "openrouter" && !entry.placeholder && entry.images === false,
+)!;
+
 describe("role-based model settings API", () => {
+  it("saves a computer-use model only when it can see images", async () => {
+    const { call } = setup();
+    const accepted = await call("models/setRole", {
+      role: "computer",
+      primary: { provider: "openrouter", modelId: visionModel.id },
+    });
+    expect(accepted.response.status).toBe(200);
+    const refused = await call("models/setRole", {
+      role: "computer",
+      primary: { provider: "openrouter", modelId: textOnlyModel.id },
+    });
+    expect(refused.response.status).toBe(400);
+  });
+  it("offers only image-capable models for computer use", async () => {
+    const { call } = setup();
+    const { response } = await call("models/forRole", { role: "computer" });
+    const entries: Array<{ id: string; images?: boolean }> = (await response.json()).json;
+    expect(entries.some((entry) => entry.id === visionModel.id)).toBe(true);
+    expect(entries.some((entry) => entry.images === false)).toBe(false);
+  });
   it("accepts a decision model pinned to the provider's only connection", async () => {
     const { call } = setup();
     const primary = {

@@ -12,7 +12,7 @@ import { canDeleteInboxSpace, inboxItemKey } from "../lib/inbox-spaces";
 import { useThemedStyles } from "../lib/native";
 import type { useInboxChatActions } from "../lib/use-inbox-chat-actions";
 import { createHomeStyles } from "./home-styles";
-import { ArchivedChatsRow, BotRow, GroupRow, PinnedTiles, SectionChevron } from "./inbox-rows";
+import { ArchivedChatsRow, BotRow, GroupRow, PinnedTiles, SectionToggle } from "./inbox-rows";
 import { NativeSymbol } from "./native-symbol";
 
 // Swipe actions and the context menu are iOS list behaviour; other platforms keep the long-press
@@ -57,6 +57,7 @@ export function useInboxRenderItem({
   organizeBot,
   organizeFromMenu,
   organizeGroup,
+  sharing,
   spaceBusy,
   spaceRecoveryId,
   toggleCollapsed,
@@ -75,6 +76,8 @@ export function useInboxRenderItem({
   openGroup: (group: MobileGroup | SpaceGroup) => void;
   organizeBot: (bot: MobileBot | SpaceBot) => void;
   organizeGroup: (group: MobileGroup | SpaceGroup) => void;
+  /** Picking a chat for an incoming share: rows only open, without menus or swipe actions. */
+  sharing: boolean;
   spaceBusy: boolean;
   spaceRecoveryId: string | null;
   toggleCollapsed: (key: string) => void;
@@ -115,62 +118,54 @@ export function useInboxRenderItem({
             >
               <Text style={styles.spaceTitle}>{item.title}</Text>
             </Pressable>
-            <MenuView
-              actions={[
-                { id: "settings", title: t("Settings"), image: "gearshape" },
-                ...(canDeleteInboxSpace(item.space)
-                  ? [
-                      {
-                        id: "delete",
-                        title: t("Delete space"),
-                        image: "trash" as const,
-                        attributes: {
-                          destructive: true,
-                          disabled: spaceBusy || !!spaceRecoveryId,
+            {sharing ? null : (
+              <MenuView
+                actions={[
+                  { id: "settings", title: t("Settings"), image: "gearshape" },
+                  ...(canDeleteInboxSpace(item.space)
+                    ? [
+                        {
+                          id: "delete",
+                          title: t("Delete space"),
+                          image: "trash" as const,
+                          attributes: {
+                            destructive: true,
+                            disabled: spaceBusy || !!spaceRecoveryId,
+                          },
                         },
-                      },
-                    ]
-                  : []),
-              ]}
-              colorScheme={appearance}
-              onPressAction={({ nativeEvent }) => {
-                if (!item.space) return;
-                if (nativeEvent.event === "delete") confirmDeleteSpace(item.space);
-                else
-                  router.push({
-                    pathname: "/space",
-                    params: { spaceId: item.space.id, name: item.space.name },
-                  });
-              }}
-            >
-              <View
-                accessibilityLabel={t("Space actions for {name}", { name: item.title })}
-                accessibilityRole="button"
-                style={styles.spaceActions}
+                      ]
+                    : []),
+                ]}
+                colorScheme={appearance}
+                onPressAction={({ nativeEvent }) => {
+                  if (!item.space) return;
+                  if (nativeEvent.event === "delete") confirmDeleteSpace(item.space);
+                  else
+                    router.push({
+                      pathname: "/space",
+                      params: { spaceId: item.space.id, name: item.space.name },
+                    });
+                }}
               >
-                <NativeSymbol ios="ellipsis" android="ellipsis-horizontal" size={20} />
-              </View>
-            </MenuView>
+                <View
+                  accessibilityLabel={t("Space actions for {name}", { name: item.title })}
+                  accessibilityRole="button"
+                  style={styles.spaceActions}
+                >
+                  <NativeSymbol ios="ellipsis" android="ellipsis-horizontal" size={20} />
+                </View>
+              </MenuView>
+            )}
           </View>
         ) : (
           <View style={styles.sectionHeadingRow}>
-            <Pressable
-              accessibilityRole="button"
-              accessibilityLabel={
-                item.collapsed
-                  ? t("Expand {name}", { name: item.title })
-                  : t("Collapse {name}", { name: item.title })
-              }
-              accessibilityState={{ expanded: !item.collapsed }}
-              accessibilityValue={item.collapsed ? { text: String(item.count ?? 0) } : undefined}
+            <SectionToggle
+              title={item.title}
+              count={item.collapsed ? (item.count ?? 0) : undefined}
+              collapsed={item.collapsed === true}
               onPress={() => toggleCollapsed(item.key)}
-              style={({ pressed }) => [styles.sectionToggle, pressed && styles.rowPressed]}
-            >
-              <Text style={styles.sectionTitle}>{item.title}</Text>
-              {item.collapsed ? <Text style={styles.sectionCount}>{item.count ?? 0}</Text> : null}
-              <SectionChevron collapsed={item.collapsed === true} />
-            </Pressable>
-            {item.sectionId && Platform.OS === "android" ? (
+            />
+            {sharing || !item.sectionId ? null : Platform.OS === "android" ? (
               // A plain button, like the create control: the Android menu trigger can collapse to
               // zero width on an older binary, which would hide the only way to delete an empty section.
               <Pressable
@@ -183,7 +178,7 @@ export function useInboxRenderItem({
               >
                 <NativeSymbol ios="ellipsis" android="ellipsis-horizontal" size={20} />
               </Pressable>
-            ) : item.sectionId ? (
+            ) : (
               <MenuView
                 actions={[
                   {
@@ -206,7 +201,7 @@ export function useInboxRenderItem({
                   <NativeSymbol ios="ellipsis" android="ellipsis-horizontal" size={20} />
                 </View>
               </MenuView>
-            ) : null}
+            )}
           </View>
         )
       ) : item.type === "group" ? (
@@ -225,8 +220,8 @@ export function useInboxRenderItem({
           bot={item.bot}
           day={day}
           onPress={openBot}
-          onLongPress={!SWIPE_ROWS ? organizeBot : undefined}
-          onAction={SWIPE_ROWS && item.bot.spaceId === spaceId ? botAction : undefined}
+          onLongPress={!sharing && !SWIPE_ROWS ? organizeBot : undefined}
+          onAction={!sharing && SWIPE_ROWS && item.bot.spaceId === spaceId ? botAction : undefined}
           sections={botSections}
           onOrganize={organizeFromMenu}
           onEditSection={editSectionFromMenu}
@@ -249,6 +244,7 @@ export function useInboxRenderItem({
       organizeFromMenu,
       organizeGroup,
       router,
+      sharing,
       spaceBusy,
       spaceRecoveryId,
       styles,

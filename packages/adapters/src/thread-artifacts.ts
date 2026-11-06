@@ -13,9 +13,10 @@ import {
   ATTACHMENT_MAX_BYTES,
   ATTACHMENT_MAX_COUNT,
   attachmentSizeLabel,
+  HISTORY_ATTACHMENTS_PER_RESPONSE,
 } from "@rakazo/contracts";
 import {
-  attachmentExtensionForMimeType,
+  attachmentComputerPath,
   inferAttachmentMimeType,
   messageBlockForArtifact,
   validateAttachmentMimeType,
@@ -144,7 +145,7 @@ function threadFileMetadata(
     name: row.name,
     mimeType: row.mimeType,
     size: row.size,
-    path: `attachments/${row.id}${attachmentExtensionForMimeType(row.mimeType)}`,
+    path: attachmentComputerPath(row.id, row.mimeType),
   };
 }
 
@@ -194,11 +195,8 @@ async function materializeThreadFiles(
   input: Parameters<typeof materializeCurrentTurnFiles>[2],
   preserveExisting: boolean,
 ): Promise<MaterializedThreadFile[]> {
-  // "image" attachments (e.g. a photo pasted or uploaded in chat) are backed
-  // by a real artifact exactly like "file" ones — the model seeing them
-  // inline for vision (loadCurrentTurnImages) doesn't put them on disk, so
-  // they must be included here too or a bot can describe a photo it can't
-  // actually attach, forward, or hand to a tool that needs the file.
+  // Images seen inline for vision are not on disk, so they are copied too; otherwise a bot can
+  // describe a photo it cannot attach, forward, or hand to a tool.
   const fileBlocks = attachmentBlocks(blocks);
   if (!fileBlocks.length) return [];
   const byId = await attachedArtifacts(deps.prisma, fileBlocks, input.context);
@@ -248,18 +246,73 @@ export async function materializeRecentThreadFiles(
     maxTurns: number;
   },
 ): Promise<MaterializedThreadFile[]> {
+  // Every computer start copies these again, so they need no checkpoint.
+  return materializeEarlierFiles(
+    deps,
+    recentAttachmentBlocks(history, messages, input),
+    { ...input, markWorkspaceDirty: undefined },
+    ATTACHMENT_MAX_COUNT,
+  );
+}
+
+/** Earlier files waiting to be copied at once: one full history response; older listings give way. */
+export const EARLIER_FILES_PENDING = HISTORY_ATTACHMENTS_PER_RESPONSE;
+
+/**
+ * Files history tools listed since the last computer tool, newest kept. A file copied to the
+ * current computer is not queued again; one whose copy failed is, the next time it is listed.
+ */
+export function createEarlierFileQueue(limit = EARLIER_FILES_PENDING) {
+  type FileBlock = Extract<MessageBlock, { kind: "file" | "image" }>;
+  let pending: FileBlock[] = [];
+  let copied = new Set<string>();
+  return {
+    add(files: ReadonlyArray<FileBlock>) {
+      for (const file of files) {
+        if (copied.has(file.artifactId)) continue;
+        pending = pending.filter((queued) => queued.artifactId !== file.artifactId);
+        pending.push(file);
+      }
+      if (pending.length > limit) {
+        getLogger().warn("earlier files not copied: newer listings replaced them");
+        pending = pending.slice(-limit);
+      }
+    },
+    take() {
+      const taken = pending;
+      pending = [];
+      return taken;
+    },
+    /** Record which taken files reached the computer, by the paths the copy returned. */
+    copiedTo(taken: ReadonlyArray<FileBlock>, files: ReadonlyArray<MaterializedThreadFile>) {
+      const paths = new Set(files.map((file) => file.path));
+      for (const file of taken)
+        if (paths.has(attachmentComputerPath(file.artifactId, file.mimeType)))
+          copied.add(file.artifactId);
+    },
+    /** A newly started computer has none of the earlier copies. */
+    computerStarted() {
+      copied = new Set();
+    },
+  };
+}
+
+/**
+ * Copy files from earlier messages onto the computer, keeping copies already there. Each
+ * file that cannot be copied is logged and skipped so it never blocks the tool that asked.
+ * A new copy marks the workspace dirty when the caller passes markWorkspaceDirty.
+ */
+export async function materializeEarlierFiles(
+  deps: Parameters<typeof materializeCurrentTurnFiles>[0],
+  blocks: ReadonlyArray<Extract<MessageBlock, { kind: "file" | "image" }>>,
+  input: Parameters<typeof materializeCurrentTurnFiles>[2],
+  limit = Number.POSITIVE_INFINITY,
+): Promise<MaterializedThreadFile[]> {
   const materialized: MaterializedThreadFile[] = [];
-  for (const block of recentAttachmentBlocks(history, messages, input)) {
-    if (materialized.length >= ATTACHMENT_MAX_COUNT) break;
+  for (const block of blocks) {
+    if (materialized.length >= limit) break;
     try {
-      materialized.push(
-        ...(await materializeThreadFiles(
-          deps,
-          [block],
-          { ...input, markWorkspaceDirty: undefined },
-          true,
-        )),
-      );
+      materialized.push(...(await materializeThreadFiles(deps, [block], input, true)));
     } catch (error) {
       if (input.context.signal.aborted) throw error;
       getLogger().warn("earlier thread attachment was not copied to the computer", {

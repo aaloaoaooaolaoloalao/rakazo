@@ -1,14 +1,16 @@
 # Self-hosting Rakazo
 
+Run the API, worker, web app, database and bot computers on a machine you control.
+
 The signed-in product is a long-running API, a Graphile Worker, Postgres, and a computer provider (Docker supervisor, E2B, Daytona, CreateOS, or Boat). It is not a static site. The marketing site in `apps/www` can be hosted separately.
 
-## Local (source checkout)
+## What you need
 
-Same as the README quick start: `.env` from `.env.example`, `pnpm sandbox:build`, `pnpm dev`, then the URL it prints ([http://127.0.0.1:5173](http://127.0.0.1:5173) by default, or `http://localhost:5173` — both loopback hosts are trusted). Electron: `pnpm --filter @rakazo/desktop dev` while that stack is up, choosing **Existing instance** with that address. The desktop app's **This computer** option instead installs and runs the published images itself with Docker Compose (see [Published images](#published-images-no-checkout)), using port 45173 by default so it can run alongside `pnpm dev`. If that port is occupied, the app selects and remembers another loopback port. The managed API gets a Docker-assigned loopback port; all desktop traffic uses the web origin.
-
-For source development in WSL, keep the checkout and `data` directory in the Linux filesystem (for example, `~/rakazo`), and run `pnpm dev` as your normal user. The host-run supervisor matches bot container UID/GID to that user. If Docker Desktop container IPs are unreachable, set `SANDBOX_CONTROL_VIA_LOOPBACK=true` in `.env`; this publishes the token-protected control service on a random loopback port. Leave this unset for the Compose-hosted supervisor.
-
-Compose bot homes mount only their own subdirectory of the application volume using Docker volume semantics. Docker's internal volume paths are never used as host bind mounts.
+- Docker Engine 26 or newer with the Compose plugin, curl and OpenSSL. Nothing else is needed for
+  the published images.
+- A model: an OpenRouter key, a connection added in the app after signup, or a model server you
+  run yourself ([models](./self-host-models.md)).
+- For a public host, a domain and TLS ([production deployment](./self-host-production.md)).
 
 ## Published images (no checkout)
 
@@ -31,32 +33,11 @@ run `bash install-images.sh`. Flags may be combined in either order: `--prepare-
 `SANDBOX_PROVIDER` defaults to `docker`. The images Compose file runs a sandbox supervisor
 (from the app image, on the internal network only) and pulls `ghcr.io/elie222/rakazo/computer`.
 Signup and local Docker computers work without an E2B account. Optional remote providers: set
-`SANDBOX_PROVIDER` to `e2b`, `daytona`, `createos`, or `boat` and add the matching API key. The published-images
+`SANDBOX_PROVIDER` to `e2b`, `novita`, `daytona`, `createos`, or `boat` and add the matching API key. The published-images
 Compose stack requires `SANDBOX_SUPERVISOR_TOKEN` for every provider; leave it empty and `compose up` fails closed.
 
-Optional: set `OPENROUTER_API_KEY` or connect a model in the UI after signup.
-A provider that authenticates from the host needs no key: for Amazon Bedrock with an ECS task,
-IRSA or EC2 instance role, opt in with `PI_DEFAULT_CREDENTIALS=host` and set
-`PI_DEFAULT_PROVIDER=amazon-bedrock`, `PI_DEFAULT_MODEL` and `AWS_REGION`. With an instance
-role, keep [restricted computer egress](#restricted-computer-egress) on so bot computers
-cannot read the role's credentials from the metadata endpoint.
-Approvals have three modes in **Settings → Approvals**: Never ask runs every action, Auto lets an
-approval model pass actions that fit the request, and Ask asks before any change. A space starts
-in Ask, or in Auto when `RAKAZO_AUTO_REVIEW=1` is set and an approval model is available. Each
-person can allow or block single tools and sites in every mode, and a space can customize its
-approvals apart from the account.
-
-In **Settings → Models → Approval model**, each user can select a model
-from an existing connection and add ordered backups, independently of their main model. Personal
-connections use their own credentials; hosted calls follow the same Rakazo credit rules as chat.
-Backups are tried only when a checker fails. An explicit ask, including an uncertain decision,
-still requires a person.
-
-The deployment checker remains the default when no approval model is selected. For OpenRouter
-Jev, set `RAKAZO_AUTO_REVIEW_PROVIDER=openrouter` and
-`RAKAZO_AUTO_REVIEW_MODEL=typesafe/jev-1.14`; it uses `OPENROUTER_API_KEY` and the Decisions API.
-TypeSafe direct remains available through `RAKAZO_AUTO_REVIEW_PROVIDER=jev` and
-`TYPESAFE_API_KEY`. Core runs without either hosted service.
+Optional: set `OPENROUTER_API_KEY` or connect a model in the UI after signup. Other providers,
+local models and approvals are covered in [models](./self-host-models.md).
 
 The example defaults to `edge` (main builds). Every publish is multi-arch (`amd64` + `arm64`), so
 arm64 hosts need no special tag. Do not assume `latest` is present until a stable release exists.
@@ -67,7 +48,8 @@ that HTTPS URL.
 Images Compose binds web to loopback (`127.0.0.1:5173`). Terminate TLS on the host and proxy
 there. Vite preview same-origin-proxies `/api` and `/rpc`, so do not expose `:3100`. Set
 `BETTER_AUTH_URL`, `WEB_ORIGIN`, and `API_URL` to that same HTTPS origin, and set
-`RAKAZO_HOST` to its hostname (for example, `app.example.com`).
+`RAKAZO_HOST` to its hostname (for example, `app.example.com`). Cookies and CORS follow those
+origins.
 
 ```Caddyfile
 app.example.com {
@@ -77,95 +59,13 @@ app.example.com {
 
 Open **Agent computer** on a bot, or send a message that uses the desktop, to see
 the local Docker computer. For in-stack Caddy plus remote E2B computers, use the
-[production Compose](#public-single-vm-deployment) path and `infra/compose/Caddyfile.prod`
+[production Compose](./self-host-production.md#public-single-vm-deployment) path and `infra/compose/Caddyfile.prod`
 instead of this host proxy.
 
 ### Restricted networks / mirror downloads
 
 If the installer, Compose downloads, or image pulls are blocked, use the
 [restricted-network guide](./self-host-restricted-network.md) for mirror settings and local files.
-
-### Bot computer resource ceilings
-
-Each Docker computer runs Xvfb, a window manager and a full Chromium driven by an agent that
-decides for itself what to open, so it is capped. These defaults provide a starting point for the
-Docker computer topology:
-
-| Variable | Default | Accepts |
-| --- | --- | --- |
-| `RAKAZO_COMPUTER_MEMORY` | `2g` | `2g`, `1536m`, a byte count. Minimum `6m`, Docker's own floor. Also caps swap, so the ceiling holds. |
-| `RAKAZO_COMPUTER_CPUS` | `2` | Whole or fractional cores, e.g. `1.5` |
-| `RAKAZO_COMPUTER_PIDS_LIMIT` | `2048` | A positive integer |
-
-Set any of them to `0`, `none` or `unlimited` to remove that ceiling. A malformed value fails the
-supervisor at startup naming the variable, rather than surfacing later as a failed bot.
-
-### Restricted computer egress
-
-Restricted egress gives Docker computers the public internet (browsing, DNS, apt, git
-over SSH) but not the Docker host, the LAN, or link-local cloud metadata such as
-`169.254.169.254`, which on a cloud VM would hand instance credentials to anything a bot runs.
-
-It takes two parts:
-
-1. `SANDBOX_COMPUTER_EGRESS=restricted` gives each computer network a deterministic host
-   bridge name (`rakazo-c…`) instead of a generic `br-*`.
-2. The host ruleset, applied once per Docker host:
-
-   ```bash
-   sudo bash infra/compose/restrict-computer-egress.sh
-   ```
-
-   `install-images.sh` downloads and runs it (asking for sudo) and records the result in
-   `.env`. Where the rules cannot be installed (macOS, Windows, Docker Desktop, rootless
-   Docker, no iptables, or a failed run) it writes `SANDBOX_COMPUTER_EGRESS=open` and says
-   why. The script drops forwarded traffic from `rakazo-c*` bridges to all non-public IPv4/IPv6
-   destinations via the `DOCKER-USER` chain, adds an `INPUT` drop so computers cannot open
-   connections to the host (established replies to host-initiated control and screen
-   connections still flow), and installs a systemd oneshot so the rules return after a
-   reboot. `--print` shows the exact rules without changing anything; `--remove` uninstalls.
-
-Before the first restricted computer starts, the supervisor checks that the host drops
-connections from a `rakazo-c*` bridge. Without the ruleset, computers fail to start with an
-error naming the script instead of running unrestricted; run the script (no restart needed)
-or set `SANDBOX_COMPUTER_EGRESS=open` and recreate the supervisor.
-
-When `SANDBOX_COMPUTER_EGRESS` is unset, the Compose files use `auto`: the supervisor runs the
-same check and uses restricted egress if the ruleset is in place, otherwise open egress with a
-warning in its log. It keeps the first completed answer; a check that could not finish (a Docker
-error or timeout) fails that computer's start and runs again on the next one. An install from before the ruleset existed therefore
-keeps working when it upgrades. After installing the ruleset, recreate the supervisor, or set
-`restricted` to refuse computers whenever the rules are missing. A host-run supervisor
-(`pnpm dev`) and the desktop app's **This computer** stack default to open: Docker Desktop
-keeps its bridges in a VM the host rules cannot reach.
-
-Screen streaming is unaffected: the supervisor and web proxy join each computer's bridge,
-and the ruleset exempts traffic whose in- and out-interface are both `rakazo-c*` before
-any drop (that exemption is load-bearing on hosts where `br_netfilter` feeds bridged
-frames through `FORWARD`). Rules match interface names rather than subnets, so computer
-create/delete cycles need no firewall maintenance; deleting a computer removes its
-traffic from the match and nothing else. A computer provisioned while egress was open
-is replaced on its next provision — resuming it on an unnamed bridge would bypass the
-restriction.
-
-Computers resolve names through Docker's embedded DNS, which forwards each lookup to the
-host's resolvers from inside the computer's network. When the host's resolver has a private
-address, as a cloud VPC resolver or a LAN router does, the ruleset drops that forward too and
-every lookup times out while connections by IP still work. Set `SANDBOX_COMPUTER_DNS` to
-public resolvers (comma-separated IP addresses, such as `1.1.1.1,1.0.0.1`) and recreate the
-supervisor: Docker then forwards computers' lookups there, and each computer picks the
-servers up on its next provision.
-
-If computers must reach LAN services, an internal proxy, or endpoints bound to the host,
-set `SANDBOX_COMPUTER_EGRESS=open`, recreate the supervisor, and run
-`sudo bash infra/compose/restrict-computer-egress.sh --remove`. The flag alone does not
-uninstall the host rules, which keep matching the still-named `rakazo-c*` bridges until
-removed.
-
-The ruleset requires Linux Docker Engine with the iptables backend; Docker Desktop, rootless
-Docker, and `firewall-backend: nftables` are unsupported. The
-`SANDBOX_SCREEN_NETWORK=internal` topology shares one network instead of per-bot bridges,
-so the mode does not apply there.
 
 ## Docker Compose (single machine)
 
@@ -192,88 +92,48 @@ add `infra/compose/docker-compose.postgres-host.yml` so Postgres is published on
 `docker compose --env-file .env -f infra/compose/docker-compose.yml exec postgres sh -c 'psql -U "$POSTGRES_USER" -d "$POSTGRES_DB"'`.
 Do not publish Postgres on a public interface.
 
-### Database roles
+## Local (source checkout)
 
-Rakazo uses two Postgres logins:
+Same as the README quick start: `.env` from `.env.example`, `pnpm sandbox:build`, `pnpm dev`, then the URL it prints ([http://127.0.0.1:5173](http://127.0.0.1:5173) by default, or `http://localhost:5173` — both loopback hosts are trusted). Electron: `pnpm --filter @rakazo/desktop dev` while that stack is up, choosing **Existing instance** with that address. The desktop app's **This computer** option instead installs and runs the published images itself with Docker Compose (see [Published images](#published-images-no-checkout)), using port 45173 by default so it can run alongside `pnpm dev`. If that port is occupied, the app selects and remembers another loopback port. The managed API gets a Docker-assigned loopback port; all desktop traffic uses the web origin.
 
-- The owner (`POSTGRES_USER`, or `DATABASE_MIGRATION_URL` outside Compose) runs migrations and
-  owns the tables.
-- The app login (`rakazo_app` with `POSTGRES_APP_PASSWORD`, or `DATABASE_URL`) is not a
-  superuser, cannot bypass row-level security, cannot create objects, and can only read and write
-  the app tables.
+For source development in WSL, keep the checkout and `data` directory in the Linux filesystem (for example, `~/rakazo`), and run `pnpm dev` as your normal user. The host-run supervisor matches bot container UID/GID to that user. If Docker Desktop container IPs are unreachable, set `SANDBOX_CONTROL_VIA_LOOPBACK=true` in `.env`; this publishes the token-protected control service on a random loopback port. Leave this unset for the Compose-hosted supervisor.
 
-`pnpm db:migrate` (in containers, its prebuilt form `pnpm --filter @rakazo/api db:deploy`, which the
-one-shot `migrate` container runs before the API starts) applies the migrations and the job queue
-schema as the owner. Only that container gets the owner login, so code running in the API or
-worker cannot find one that bypasses row-level security. It then creates the app login named in `DATABASE_URL`, or updates its
-password, and grants it the `rakazo_app` role. When migrations run as a role without
-`CREATEROLE`, as on some managed Postgres, create the login yourself and
-`GRANT rakazo_app TO <login>`.
+Compose bot homes mount only their own subdirectory of the application volume using Docker volume semantics. Docker's internal volume paths are never used as host bind mounts.
 
-Messages, events, threads, memory, artifacts, secrets, model and voice credentials, skills, bots,
-runs, tasks, routines, connections, MCP servers and sign-ins, computers, boards and tickets,
-messaging identities and outbox, external conversations, steering messages, usage, scratchpad
-items and approval rules have row-level security. Each signed-in request sees only its Space's
-rows, plus the user's own account-level credentials. A query that leaves out its Space filter
-returns nothing from other Spaces. A background job that acts for one run, routine, computer,
-skill, thread or cloud agent runs as that row's Space and user, so agent tools get the same
-backstop. Security events are written and read only in system scope. Reconcilers, queue sweeps,
-the messaging outbox drain and webhooks run in a named system scope (`runAsSystem` in
-`packages/db`). The job queue's tables (`graphile_worker`) hold job metadata, not Space content:
-graphile-worker turns on row-level security for them, and `pnpm db:migrate` adds a policy that
-gives the app login every row.
+## Configure and operate
 
-With only `DATABASE_URL` set, migrations and the app share one login. Everything keeps working,
-but `pnpm db:migrate`, the API and the worker warn that row-level security is not enforced. To fix
-this, set `DATABASE_MIGRATION_URL` to the owner and `DATABASE_URL` to a new login.
+- [Configuration](./self-host-configuration.md): how settings reach each service, run limits, the
+  database and outbound proxies.
+- [Secrets](./self-host-secrets.md): the required keys and how to keep them.
+- [Sign-in and accounts](./self-host-accounts.md): who can sign up, email, SSO, passkeys and
+  passwords.
+- [Models](./self-host-models.md): model providers, local models, approvals, media generation and
+  voice.
+- [Tools and integrations](./self-host-integrations.md): web search, memory, MCP servers,
+  messaging apps, cloud coding agents and payments.
+- [Computer providers](./self-host-sandbox-providers.md) and
+  [Docker computers](./self-host-docker-computers.md): where bot computers run and how they are
+  limited.
+- [Storage and encryption](./self-host-storage.md): content encryption, object storage and upload
+  limits.
+- [Production deployment](./self-host-production.md): a public single-VM install with automatic
+  HTTPS.
+- [Backup and restore](./self-host-backups.md) and [upgrading](./self-host-upgrading.md).
+- [Logs and monitoring](./self-host-observability.md): logs, error reports, traces, security events
+  and alerts.
+- [Audit log](./self-host-audit-log.md): who did what in each organization, retention, export
+  and SIEM forwarding.
+- [Apps and clients](./self-host-clients.md): mobile and desktop apps, push, client updates and web
+  page settings.
+- [Billing](./self-host-billing.md): optional Stripe plans and model credits.
+- [Restricted networks](./self-host-restricted-network.md): mirrors when downloads are blocked.
 
-Run `pg_dump` as the owner. The app login would only dump rows it is allowed to see.
+## Reporting a problem
 
-The Docker supervisor is not published as its own image and is not exposed on the host. It runs from
-the app image, stays on the internal Compose network, and holds the Docker socket because access to
-it is equivalent to control of the Docker host. Docker sandboxes require `SANDBOX_SUPERVISOR_TOKEN`
-(API, worker, supervisor). `SCREEN_PROXY_SECRET` signs browser-screen capabilities (API and web
-proxy). Keep both distinct from `BETTER_AUTH_SECRET`.
-
-New credentials use versioned AES-GCM with per-record salt and row-bound AAD. Legacy ciphertext stays readable.
-
-On a VPS, put TLS in front of `:5173` (or serve the web build behind your proxy) and set:
-
-```env
-BETTER_AUTH_URL=https://app.example.com
-WEB_ORIGIN=https://app.example.com
-API_URL=https://app.example.com
-```
-
-Cookies and CORS follow those origins. `SIGNUPS_ENABLED` and `SIGNUP_ALLOWLIST` come from the operator's environment on every start. An empty allowlist clears any old stored list; signup order never grants privileges.
-
-With a nonempty signup allowlist and SMTP configured, users—including existing accounts—must
-verify their email to sign in. Without an allowlist, verification never blocks: a password signup
-signs in at once and is sent a verification link that only marks the address verified.
-
-SMTP also enables sign-in with a six-digit emailed code, which expires after ten minutes and allows
-three attempts. A code can create an account, so it follows the same registration and allowlist
-rules as password signup. Signing in with a code to an existing unverified account removes that
-account's password, SSO links and sessions, since nothing proved they belonged to the mailbox
-owner. This is what stops someone who registered another person's address from keeping access.
-
-Allowlisted signup requires mailbox verification and email delivery, including the first account.
-Without email delivery, use the server-side account bootstrap described below; public signup never marks an address verified or assigns server permissions.
-
-Server configuration belongs in the operator's environment. App accounts cannot change signup policy,
-server integration credentials, or deployment updates, and cannot read deployment security logs.
-`SIGNUPS_ENABLED` and `SIGNUP_ALLOWLIST` are authoritative on every start; an empty allowlist clears any old stored policy.
-There is no app-admin role, first-user privilege, or `ADMINS` list. Workspace owners manage only their own workspace.
-
-For an installation without email, first set `SIGNUPS_ENABLED=false` in `.env` and start the stack.
-Create the intended account privately (the password stays in the shell environment):
+Attach a diagnostics report to a [self-host issue](https://github.com/elie222/rakazo/issues/new?template=self-host.yml):
 
 ```bash
-read -r -p "Account email: " OWNER_EMAIL
-read -r -s -p "Account password (at least 16 characters): " OWNER_PASSWORD
-export OWNER_EMAIL OWNER_PASSWORD
-docker compose --env-file .env -f docker-compose.images.yml exec -e OWNER_EMAIL -e OWNER_PASSWORD api node dist/cli/bootstrap-owner.js
-unset OWNER_EMAIL OWNER_PASSWORD
+docker compose -f docker-compose.images.yml exec api node dist/cli/diagnostics.js
 ```
 
 For a source checkout, use `-f infra/compose/docker-compose.yml` instead. This creates an ordinary verified account and a personal workspace, with no server privileges. For an existing unverified account, its password must match before it can be verified; an existing verified account is left unchanged.
@@ -2174,3 +2034,12 @@ when they next open the app. Remove the archived token files after verifying the
 Restart API and worker processes after both commands finish. A schema-only rollback remains
 compatible with the previous release, but the old code does not read database registrations
 or object-backed artifacts.
+
+From a checkout, use `-f infra/compose/docker-compose.yml` (or the production file) instead. The
+report lists the revision, which features are on, migration status, each bot's MCP servers with
+their health, and the latest runs. It prints no secrets, settings values, names, addresses,
+paths or message content; servers, bots and runs appear only as short hashes.
+
+When a user asks their bot to report a bug or send feedback, the report is saved on your server
+in the `feedback_reports` table, with the chat, bot and run it came from. Nothing is sent to the
+Rakazo project.

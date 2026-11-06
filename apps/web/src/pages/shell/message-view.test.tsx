@@ -5,6 +5,7 @@ import { act } from "react";
 import type { Root } from "react-dom/client";
 import { createRoot } from "react-dom/client";
 import { afterEach, beforeEach, expect, it, vi } from "vitest";
+import { rpc } from "../../lib/rpc";
 import { MessageView } from "./message-view";
 
 const skills = vi.hoisted(() => ({
@@ -13,6 +14,11 @@ const skills = vi.hoisted(() => ({
   testRun: vi.fn(async () => ({ runId: "run" })),
 }));
 vi.mock("../../lib/rpc", () => ({ rpc: { skills } }));
+
+vi.mock("@lingui/core/macro", () => ({
+  plural: (count: number, forms: { one: string; other: string }) =>
+    (count === 1 ? forms.one : forms.other).replace("#", String(count)),
+}));
 
 vi.mock("@lingui/react/macro", () => ({
   Trans: ({ children }: { children: ReactNode }) => children,
@@ -52,33 +58,31 @@ const planner = (status: "created" | "archived" | "deleted" = "created") => ({
   status,
 });
 
-function renderMessage(
+function renderView(
+  role: ThreadMessage["role"],
   blocks: ThreadMessage["blocks"],
-  peerBot: PeerBot,
-  mentions?: ReturnType<typeof planner>[],
+  props: Partial<ComponentProps<typeof MessageView>> = {},
 ) {
-  const onOpenBot = vi.fn();
   const message: ThreadMessage = {
     id: "message",
     threadId: "thread",
     seq: 1,
-    role: "bot",
+    role,
     createdAt: new Date().toISOString(),
     blocks,
   };
   act(() =>
     root.render(
       <MessageView
+        rpc={rpc}
         artifactTarget={{ botId: "parent" }}
         canAnswer={false}
         canDismiss={false}
         message={message}
-        mentions={mentions}
         onAnswer={vi.fn()}
-        onOpenBot={onOpenBot}
+        onOpenBot={vi.fn()}
         onOpenPeerMessages={vi.fn()}
-        onTogglePeerReplies={vi.fn()}
-        peerBot={peerBot}
+        peerBot={existingBot}
         onRefresh={vi.fn()}
         onBotChanged={vi.fn()}
         onAddRoutine={vi.fn()}
@@ -90,13 +94,35 @@ function renderMessage(
         onReply={vi.fn()}
         onMarkUnread={vi.fn()}
         onReact={vi.fn()}
+        {...props}
       />,
     ),
   );
+}
+
+function renderMessage(
+  blocks: ThreadMessage["blocks"],
+  peerBot: PeerBot,
+  mentions?: ReturnType<typeof planner>[],
+) {
+  const onOpenBot = vi.fn();
+  renderView("bot", blocks, { mentions, onOpenBot, peerBot });
   const mention = container.querySelector<HTMLElement>('[data-testid="bot-mention"]')!;
   act(() => mention.click());
   return { mention, onOpenBot };
 }
+
+it("keeps a received peer marker off the user's side while user replies align to the end", () => {
+  renderView("user", [
+    { kind: "bot_message_received", fromBotId: "peer", fromBotName: "Atlas", text: "Done." },
+  ]);
+  const chip = container.querySelector('[data-testid="peer-receipt-chip"]');
+  expect(chip?.textContent).toBe("Message from Atlas");
+  expect(chip?.closest(".items-end")).toBeNull();
+
+  renderView("user", [{ kind: "text", text: "Thanks." }]);
+  expect(container.querySelector(".items-end")?.textContent).toContain("Thanks.");
+});
 
 it("names a new bot inline in the reply, in its color", () => {
   const { mention, onOpenBot } = renderMessage(
@@ -174,6 +200,7 @@ it("keeps an edit made after a save when the saved status arrives late", async (
   const render = (block: typeof draft | (Omit<typeof draft, "status"> & { status: "saved" })) =>
     root.render(
       <MessageView
+        rpc={rpc}
         artifactTarget={{ botId: "parent" }}
         canAnswer={false}
         canDismiss={false}
@@ -188,7 +215,6 @@ it("keeps an edit made after a save when the saved status arrives late", async (
         onAnswer={vi.fn()}
         onOpenBot={vi.fn()}
         onOpenPeerMessages={vi.fn()}
-        onTogglePeerReplies={vi.fn()}
         peerBot={existingBot}
         onRefresh={() => Promise.reject(new Error("offline"))}
         onBotChanged={vi.fn()}
@@ -232,4 +258,60 @@ it("keeps an edit made after a save when the saved status arrives late", async (
   act(() => render({ ...draft, skillId: "other", name: "Other", status: "saved" }));
   expect(input.value).toBe("Newer");
   expect(button().textContent).toBe("Saved");
+});
+
+it("speaks the message it renders", () => {
+  const onSpeak = vi.fn();
+  renderView("bot", [{ kind: "text", text: "Hello" }], { onSpeak, voiceReady: true });
+  const button = [...container.querySelectorAll("button")].find(
+    (node) => node.textContent === "Speak",
+  );
+  act(() => button?.click());
+  expect(onSpeak).toHaveBeenCalledTimes(1);
+  expect(onSpeak.mock.calls[0]?.[0]).toMatchObject({ id: "message" });
+});
+
+it("opens one counted peer line without an inline reply toggle", () => {
+  const open = vi.fn();
+  renderView(
+    "bot",
+    [{ kind: "bot_message_sent", toBotId: "peer", toBotName: "Researcher", text: "Request" }],
+    {
+      peerExchange: {
+        peerBotId: "peer",
+        peerBotName: "Researcher",
+        count: 3,
+        direction: "sent",
+      },
+      onOpenPeerMessages: open,
+    },
+  );
+  const line = container.querySelector<HTMLButtonElement>('[data-testid="peer-receipt-chip"]');
+  expect(line?.getAttribute("aria-label")).toBe("3 messages with Researcher");
+  expect(container.querySelector('[data-testid="peer-replies-toggle"]')).toBeNull();
+  act(() => line?.click());
+  expect(open).toHaveBeenCalledWith({ peerBotId: "peer", peerBotName: "Researcher" });
+});
+
+it("sends a settings Undo through the chat's space client", async () => {
+  const spaceRpc = { bots: { update: vi.fn(async () => ({})) } };
+  renderView(
+    "bot",
+    [
+      {
+        kind: "ask",
+        text: "Settings updated",
+        status: "answered",
+        settingsUpdate: {
+          botId: "bot-1",
+          before: { modelProvider: null, modelId: null, thinkingLevel: null },
+          after: { modelProvider: "google", modelId: "gemini-3.8-flash", thinkingLevel: "high" },
+        },
+      },
+    ],
+    { rpc: spaceRpc as never },
+  );
+  const undo = [...container.querySelectorAll("button")].find((b) => b.textContent === "Undo");
+  await act(async () => undo?.click());
+  expect(spaceRpc.bots.update).toHaveBeenCalledTimes(1);
 });

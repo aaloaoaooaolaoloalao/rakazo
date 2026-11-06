@@ -29,6 +29,8 @@ const payloadSchemas = {
     ref: z.string().min(1),
   }),
   "cloud_agent.poll": z.object({ agentId: z.string().min(1) }),
+  "purchase.poll": z.object({ purchaseId: z.string().min(1) }),
+  "media.poll": z.object({ jobId: z.string().min(1) }),
   "push.receipt": z.object({
     userId: z.string().min(1),
     ticketId: z.string().min(1),
@@ -197,6 +199,24 @@ export function cloudAgentPollJob(
     name: "cloud_agent.poll",
     payload,
     replaceKey: cloudAgentPollJobKey(payload.agentId),
+    ...(availableAt ? { availableAt } : {}),
+  };
+}
+
+export function purchasePollJob(purchaseId: string, availableAt?: Date): BackgroundJob {
+  return {
+    name: "purchase.poll",
+    payload: { purchaseId },
+    replaceKey: `purchase.poll:${purchaseId}`,
+    ...(availableAt ? { availableAt } : {}),
+  };
+}
+
+export function mediaPollJob(jobId: string, availableAt?: Date): BackgroundJob {
+  return {
+    name: "media.poll",
+    payload: { jobId },
+    replaceKey: `media.poll:${jobId}`,
     ...(availableAt ? { availableAt } : {}),
   };
 }

@@ -22,16 +22,70 @@ describe("funding selects credentials without deleting saved connections", () =>
         rejected: true,
       },
       { billingEnabled: true, mode: "byok", provider: "openrouter", hosted: false },
+      // A balance pays until the member connects the provider themselves.
+      {
+        billingEnabled: true,
+        mode: "byok",
+        balanceMicros: 1n,
+        provider: "openrouter",
+        hosted: true,
+        personal: false,
+      },
+      {
+        billingEnabled: true,
+        mode: "byok",
+        balanceMicros: 1n,
+        provider: "openrouter",
+        hosted: false,
+        ownConnection: true,
+      },
       { billingEnabled: false, mode: "credits", provider: "openrouter", hosted: false },
       { billingEnabled: true, mode: "credits", provider: "openai", hosted: false },
     ])(
       "$mode funding for $provider with billing=$billingEnabled",
-      async ({ billingEnabled, mode, provider, hosted, personal = true, rejected = false }) => {
+      async ({
+        billingEnabled,
+        mode,
+        balanceMicros = 0n,
+        provider,
+        hosted,
+        personal = true,
+        rejected = false,
+        ownConnection = false,
+      }) => {
         vi.stubEnv("PI_DEFAULT_PROVIDER", "openrouter");
         vi.stubEnv("OPENROUTER_API_KEY", "fixture-deployment-key");
         try {
           const model = listPiCatalog().find((entry) => entry.provider === provider)!;
           const load = vi.fn().mockResolvedValue("fixture-personal-key");
+          const preferenceRow = personal
+            ? {
+                userId: "user",
+                modelId: model.id,
+                credentialId: "personal",
+                updatedAt: new Date(),
+                credential: {
+                  id: "personal",
+                  userId: "user",
+                  provider,
+                  secretId: "personal-secret",
+                  defaultModel: model.id,
+                  status: "connected",
+                },
+              }
+            : null;
+          const credentialRow =
+            ownConnection || personal
+              ? {
+                  id: "personal",
+                  userId: "user",
+                  provider,
+                  secretId: "personal-secret",
+                  defaultModel: model.id,
+                  updatedAt: new Date(),
+                  createdAt: new Date(),
+                }
+              : null;
           const executor = createRunExecutor({
             billingEnabled,
             deploymentModelKey: "fixture-deployment-key",
@@ -41,15 +95,13 @@ describe("funding selects credentials without deleting saved connections", () =>
                 findUnique: async () => ({ modelCreditsEnabled: billingEnabled }),
               },
               userModelPreference: {
-                findFirst: async () =>
-                  personal
-                    ? {
-                        credential: { id: "personal", provider, secretId: "personal-secret" },
-                        modelId: model.id,
-                      }
-                    : null,
+                findFirst: async () => preferenceRow,
+                findMany: async () => (preferenceRow ? [preferenceRow] : []),
               },
-              userModelCredential: { findFirst: async () => null },
+              userModelCredential: {
+                findFirst: async () => credentialRow,
+                findMany: async () => (credentialRow ? [credentialRow] : []),
+              },
               secret: {
                 findFirst: async () => ({
                   id: "personal-secret",
@@ -57,12 +109,14 @@ describe("funding selects credentials without deleting saved connections", () =>
                 }),
               },
               space: {
-                findFirst: async () => ({ organization: { modelCredits: { mode } } }),
+                findFirst: async () => ({
+                  organization: { modelCredits: { mode, balanceMicros } },
+                }),
                 findUnique: async () => ({ organizationId: "org" }),
               },
               member: { findUnique: async () => ({ role: "owner" }) },
               billingAccount: { findUnique: async () => null },
-              modelCreditAccount: { upsert: async () => ({ mode }) },
+              modelCreditAccount: { upsert: async () => ({ mode, balanceMicros }) },
             },
           } as unknown as Parameters<typeof createRunExecutor>[0]);
           if (rejected) {

@@ -10,6 +10,7 @@ import type { PrismaClient } from "@rakazo/db";
 import { chooseModelCredential, findModelCredential, findModelCredentialById } from "@rakazo/db";
 import { resolveDeploymentModel } from "./deployment-model.js";
 import { modelCredentialDto } from "./model-connect.js";
+import { compatibleModelSeesImages, modelAcceptsImageInput } from "./model-vision.js";
 import type { ModelCredentialAuthKind } from "./pi-catalog-availability.js";
 import {
   catalogModelAvailableForAuth,
@@ -334,6 +335,35 @@ export type LoadedModelSecret =
   | { status: "missing" }
   | { status: "unreadable"; ciphertext: string }
   | { status: "loaded"; ciphertext: string; plaintext: string };
+
+/** Whether a model on a member's connection accepts image input, as that connection declares it. */
+export async function connectedModelSeesImages(
+  deps: { prisma: Pick<PrismaClient, "secret">; secretStore: Pick<SecretStore, "load"> },
+  userId: string,
+  provider: string,
+  modelId: string,
+  credential: ModelCredential,
+  catalogImages?: boolean,
+): Promise<boolean> {
+  if (canonicalPiProviderId(provider) !== OPENAI_COMPATIBLE_PROVIDER_ID)
+    return modelAcceptsImageInput(provider, modelId, catalogImages);
+  if (!credential) return false;
+  const stored = await loadStoredModelSecret(
+    deps.prisma,
+    deps.secretStore,
+    userId,
+    credential.secretId,
+  );
+  if (stored.status !== "loaded") return false;
+  try {
+    const secret = parseModelSecret(stored.plaintext);
+    return (
+      secret.kind === "openai_compatible" && compatibleModelSeesImages(credential, secret, modelId)
+    );
+  } catch {
+    return false;
+  }
+}
 
 /**
  * Read a user's account-wide model secret. A missing row or an undecryptable ciphertext is
@@ -859,7 +889,10 @@ export function pinnedModelCredentialError(
   return undefined;
 }
 
-/** A server key is available only to the funded organization and only for its configured provider. */
+/**
+ * A server key is available only to a funded organization and only for its configured provider.
+ * Outside credits mode a balance still pays until the member connects that provider themselves.
+ */
 export async function hasHostedModelCredits(
   prisma: PrismaClient,
   scope: { userId: string; spaceId: string },
@@ -869,13 +902,19 @@ export async function hasHostedModelCredits(
   if (!deployment.configured || deployment.provider !== provider) return false;
   const space = await prisma.space.findFirst({
     where: { id: scope.spaceId, organization: { members: { some: { userId: scope.userId } } } },
-    select: { organization: { select: { modelCredits: { select: { mode: true } } } } },
+    select: {
+      organization: { select: { modelCredits: { select: { mode: true, balanceMicros: true } } } },
+    },
   });
-  const mode = space?.organization.modelCredits?.mode;
-  if (mode === "credits") return true;
-  if (mode === "byok") return false;
-  // Self-hosted and other installs without Rakazo credits: the operator's deployment key.
-  return Boolean(deployment.key) || deployment.hostCredentials;
+  const credits = space?.organization.modelCredits;
+  if (credits?.mode === "credits") return true;
+  if (!credits || credits.balanceMicros <= 0n) {
+    return !credits && (Boolean(deployment.key) || deployment.hostCredentials);
+  }
+  return !(await prisma.userModelCredential.findFirst({
+    where: { userId: scope.userId, provider },
+    select: { id: true },
+  }));
 }
 
 /** Provider whose models are funded by the deployment key for catalog and validation. */

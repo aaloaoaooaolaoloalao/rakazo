@@ -6,14 +6,22 @@ import { redactSecrets, sandboxCommandTimeoutMs } from "@rakazo/core";
 import { RunHistoryWriteError } from "@rakazo/db";
 import { getLogger } from "@rakazo/logging";
 import { redactShellStreams } from "./agent-environment.js";
-import { resolveLoginFill, shellCommandEnvironment } from "./bot-secrets.js";
+import {
+  resolveCodeFill,
+  resolveLoginFill,
+  resolveVaultCardFill,
+  shellCommandEnvironment,
+} from "./bot-secrets.js";
 import {
   browserActFromTool,
   browserNavigateFromTool,
+  browserResultForModel,
   browserSnapshotFromTool,
+  redactBrowserResult,
 } from "./browser-tools.js";
 import { BACKGROUND_WORK_LAUNCH } from "./computer-idle.js";
 import {
+  displayBotWorkspacePath,
   resolveBotUploadPath,
   resolveBotWorkspaceCwd,
   resolveBotWorkspacePath,
@@ -28,12 +36,14 @@ import {
   unchangedVisualLoopToolResult,
   unchangedVisualStreakAfterPageBrowser,
 } from "./computer-tools.js";
-import { redactConnectorPayload } from "./connector-safety.js";
 import {
+  desktopGuardApplies,
   desktopProtectionGuardMessage,
   protectedComputerLifecycleRefusal,
 } from "./desktop-command-guard.js";
-import { nativeShellCommandArgv } from "./native-shell.js";
+import { nativeShellCommandArgv, usesNativeShell } from "./native-shell.js";
+import { purchaseApprovalOf } from "./purchase-gate.js";
+import { resolvePurchaseCardFill, resolvePurchasePayTokenFill } from "./purchase-service.js";
 import type { RunContext } from "./run-context.js";
 import { addRunSecrets } from "./run-context.js";
 import { builtinOffered } from "./run-instructions.js";
@@ -46,8 +56,8 @@ import {
 } from "./shell-command-stream.js";
 import { DESKTOP_HELD_FOR_TAKEOVER_MESSAGE } from "./takeover-resume.js";
 import { getActiveTeachingSession } from "./teaching-session.js";
+import { vaultCardUseOf } from "./vault-card-use.js";
 
-/** Append to the computer's Activity feed. */
 function appendComputerCommand(ctx: RunContext, payload: ComputerCommand) {
   const { deps, run, runId, bot, thread } = ctx;
   return (
@@ -123,22 +133,31 @@ function formatObservation(
   return result;
 }
 
+async function screenBlocked(ctx: RunContext): Promise<string | undefined> {
+  if (ctx.computer.heldForTakeover) return DESKTOP_HELD_FOR_TAKEOVER_MESSAGE;
+  if (await getActiveTeachingSession(ctx.deps.prisma, ctx.run.spaceId, ctx.run.botId)) {
+    return "Teaching is in progress. Stop teaching before using the computer.";
+  }
+  return undefined;
+}
+
 export async function pageBrowserTool(ctx: RunContext, call: ToolCall) {
   const { deps, run, bot, context } = ctx;
   const { name, args } = call;
-  if (ctx.computer.heldForTakeover) {
-    return call.finish({ error: DESKTOP_HELD_FOR_TAKEOVER_MESSAGE });
-  }
-  if (await getActiveTeachingSession(deps.prisma, run.spaceId, run.botId)) {
-    return call.finish({
-      error: "Teaching is in progress. Stop teaching before using the computer.",
-    });
-  }
+  const blocked = await screenBlocked(ctx);
+  if (blocked) return call.finish({ error: blocked });
   if (name !== "browser_snapshot") ctx.computer.checkpoint.markDirty();
   // Pages can echo a filled login (e.g. a username field), so scrub every page result.
   const redactions = () => [...ctx.secrets];
   const desktopTools =
     ctx.computer.graphicalToolsAllowed && builtinOffered(ctx.tools.disabled, "computer_act");
+  // A file the page downloads goes to the bot's own Downloads folder. Its name is redacted like any
+  // page text, so one that echoes a secret is listed under another name than it has on disk.
+  const downloads = {
+    folder: resolveBotWorkspacePath(ctx.computer.mode, bot.id, "Downloads"),
+    botPath: (path: string) =>
+      displayBotWorkspacePath(ctx.computer.mode, bot.id, "Downloads", path),
+  };
   const tool =
     name === "browser_navigate"
       ? browserNavigateFromTool
@@ -146,10 +165,13 @@ export async function pageBrowserTool(ctx: RunContext, call: ToolCall) {
         ? browserSnapshotFromTool
         : null;
   return computerScreenToolResult(async () => {
+    // A call that presses an approved purchase spends it: a card it types leaves no pass for the next one.
+    const paying = purchaseApprovalOf(args.purchaseApproval);
     const result = tool
-      ? redactConnectorPayload(
+      ? redactBrowserResult(
           await tool(ctx.providers.browser, await ctx.computer.get("tool", name), context, args, {
             desktopTools,
+            downloads,
           }),
           redactions(),
         )
@@ -160,7 +182,9 @@ export async function pageBrowserTool(ctx: RunContext, call: ToolCall) {
           args,
           {
             desktopTools,
+            downloads,
             redactions,
+            approvedPurchase: paying,
             // Team bots may send only their own folder or shared/ off the computer; a
             // private computer's helper already confines uploads to its home folder.
             uploadRoots:
@@ -176,37 +200,94 @@ export async function pageBrowserTool(ctx: RunContext, call: ToolCall) {
                 prisma: deps.prisma,
                 secretStore: deps.secretStore,
                 scope: run,
+                runId: run.id,
                 name: step.secret,
                 field: step.field,
               });
               if ("error" in resolved) return resolved;
               addRunSecrets(ctx, resolved.redactions);
+              return { text: resolved.text, origin: resolved.origin, hidden: resolved.hidden };
+            },
+            resolveCardFill: async (step) => {
+              if ("card" in step) {
+                // Only the card and checkout the person approved for this call.
+                const approvedCard = vaultCardUseOf(args.cardApproval);
+                if (approvedCard?.card !== step.card || approvedCard.site !== step.site)
+                  return { error: "The user has not approved typing this card here." };
+                const resolved = await resolveVaultCardFill({
+                  prisma: deps.prisma,
+                  secretStore: deps.secretStore,
+                  scope: run,
+                  name: step.card,
+                  field: step.field,
+                  site: step.site,
+                  savedAt: approvedCard.savedAt,
+                });
+                if ("error" in resolved) return resolved;
+                addRunSecrets(ctx, resolved.redactions);
+                // No pass for the pay click: approving the card named no amount, so the click
+                // that places the order still asks, showing what the page charges.
+                return { text: resolved.text, origin: resolved.origin };
+              }
+              const paymentWallet = deps.paymentWallet;
+              if (!paymentWallet) return { error: "Card fills are unavailable here." };
+              const resolved = await resolvePurchaseCardFill(
+                { prisma: deps.prisma, secretStore: deps.secretStore, paymentWallet },
+                run,
+                step.purchase,
+                step.field,
+              );
+              if ("error" in resolved) return resolved;
+              addRunSecrets(ctx, resolved.redactions);
+              if (!paying) ctx.state.walletHosts.add(new URL(resolved.origin).host);
               return { text: resolved.text, origin: resolved.origin };
+            },
+            resolveCodeFill: async () => {
+              const resolved = await resolveCodeFill({
+                prisma: deps.prisma,
+                secretStore: deps.secretStore,
+                scope: run,
+                runId: run.id,
+              });
+              if ("error" in resolved) return resolved;
+              addRunSecrets(ctx, resolved.redactions);
+              const { text, origin, claim, restore } = resolved;
+              return { text, origin, claim, restore };
+            },
+            resolvePayTokenFill: async (step) => {
+              const paymentWallet = deps.paymentWallet;
+              if (!paymentWallet) return { error: "Pay tokens are unavailable here." };
+              const resolved = await resolvePurchasePayTokenFill(
+                { prisma: deps.prisma, secretStore: deps.secretStore, paymentWallet },
+                run,
+                step.purchase,
+              );
+              if ("error" in resolved) return resolved;
+              addRunSecrets(ctx, resolved.redactions);
+              const { text, origin, merchantAccountId } = resolved;
+              if (!paying) ctx.state.walletHosts.add(new URL(origin).host);
+              return { text, origin, merchantAccountId };
             },
           },
         );
+    // A snapshot saves the PDF its tab shows, which is a new file on the computer.
+    if ((result as { downloads?: unknown } | null)?.downloads) ctx.computer.checkpoint.markDirty();
     ctx.state.screen.unchangedVisualStreak = unchangedVisualStreakAfterPageBrowser(
       ctx.state.screen.unchangedVisualStreak,
       name,
       result,
     );
-    return result;
+    return browserResultForModel(result);
   }, call.finish);
 }
 
 /** Tools that drive the bot's computer: screen, page browser and shell. */
 export const computerTools: ToolHandlers = {
   async computer_observe(ctx, call) {
-    const { deps, run, context } = ctx;
+    const { deps, context } = ctx;
     const { name } = call;
-    if (ctx.computer.heldForTakeover) {
-      return { error: DESKTOP_HELD_FOR_TAKEOVER_MESSAGE };
-    }
-    if (await getActiveTeachingSession(deps.prisma, run.spaceId, run.botId)) {
-      return {
-        error: "Teaching is in progress. Stop teaching before using the computer.",
-      };
-    }
+    const blocked = await screenBlocked(ctx);
+    if (blocked) return { error: blocked };
     return computerScreenToolResult(async () =>
       formatObservation(
         ctx,
@@ -215,16 +296,10 @@ export const computerTools: ToolHandlers = {
     );
   },
   async computer_act(ctx, call) {
-    const { deps, run, context } = ctx;
+    const { deps, context } = ctx;
     const { name, args } = call;
-    if (ctx.computer.heldForTakeover) {
-      return { error: DESKTOP_HELD_FOR_TAKEOVER_MESSAGE };
-    }
-    if (await getActiveTeachingSession(deps.prisma, run.spaceId, run.botId)) {
-      return {
-        error: "Teaching is in progress. Stop teaching before using the computer.",
-      };
-    }
+    const blocked = await screenBlocked(ctx);
+    if (blocked) return { error: blocked };
     const actions = parseComputerActions(args.actions);
     const visualActionKey = computerVisualActionKey(actions);
     if (unchangedVisualActionBlocked(ctx.state.screen.unchangedVisualStreak, actions)) {
@@ -256,7 +331,7 @@ export const computerTools: ToolHandlers = {
     const { name, args, executionId, observer } = call;
     const command = String(args.command ?? args.cmd ?? "");
     const refusal = protectedComputerLifecycleRefusal(command);
-    if (ctx.computer.graphical && refusal) {
+    if (desktopGuardApplies(ctx.computer) && refusal) {
       return call.finish({ error: desktopProtectionGuardMessage(refusal) });
     }
     const cwd = resolveBotWorkspaceCwd(
@@ -270,7 +345,6 @@ export const computerTools: ToolHandlers = {
       prisma: deps.prisma,
       secretStore: deps.secretStore,
       scope: run,
-      spaceEnvironment: ctx.agentEnvironment,
       registerRedactions: (values) => addRunSecrets(ctx, values),
     });
     ctx.computer.checkpoint.markDirty();
@@ -322,7 +396,7 @@ export const computerTools: ToolHandlers = {
       const computer = await ctx.computer.get("tool", name);
       const shellEnvironment =
         ctx.computer.hostEnvironment ??
-        (computer.kind === "desktop"
+        (usesNativeShell(computer.kind)
           ? await deps.sandbox.environment?.(computer, context)
           : undefined);
       const observed = await observeShellCommand(
@@ -407,9 +481,8 @@ export const computerTools: ToolHandlers = {
   async open_path(ctx, call) {
     const { deps, bot, context } = ctx;
     const { name, args } = call;
-    if (ctx.computer.heldForTakeover) {
-      return call.finish({ error: DESKTOP_HELD_FOR_TAKEOVER_MESSAGE });
-    }
+    const blocked = await screenBlocked(ctx);
+    if (blocked) return call.finish({ error: blocked });
     const requestedPath = String(args.path ?? "");
     ctx.computer.checkpoint.markDirty();
     return computerScreenToolResult(async () => {
@@ -445,9 +518,8 @@ export const computerTools: ToolHandlers = {
   async launch_app(ctx, call) {
     const { deps, context } = ctx;
     const { name, args } = call;
-    if (ctx.computer.heldForTakeover) {
-      return call.finish({ error: DESKTOP_HELD_FOR_TAKEOVER_MESSAGE });
-    }
+    const blocked = await screenBlocked(ctx);
+    if (blocked) return call.finish({ error: blocked });
     const application = String(args.application ?? "");
     ctx.computer.checkpoint.markDirty();
     return computerScreenToolResult(async () => {

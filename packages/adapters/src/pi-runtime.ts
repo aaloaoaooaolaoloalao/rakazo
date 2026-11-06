@@ -27,10 +27,22 @@ import {
   providerCircuit,
 } from "@rakazo/core";
 import { getLogger } from "@rakazo/logging";
-import { uncertainEffectResult } from "./approval-effect.js";
+import {
+  isTerminatingReplyResult,
+  terminatingReplyText,
+  uncertainEffectResult,
+} from "./approval-effect.js";
 import { automated, withAutomatedLabels } from "./automated-messages.js";
 import { withCloudflareAuth } from "./cloudflare-ai-gateway.js";
+import { neutralizeSpeakerLabels } from "./history-speakers.js";
 import { estimatePiImageTokens } from "./pi-image-context.js";
+import {
+  COMPUTER_MODE_TOOLS,
+  computerSelection,
+  computerTarget,
+  computerTransitionTool,
+  restoreComputerModels,
+} from "./pi-runtime-computer-mode.js";
 import {
   assistantText,
   messageHasToolCall,
@@ -70,24 +82,28 @@ import {
 import type { PiSessionHandle, PiSessionRecorder } from "./pi-session.js";
 import { PiJsonlSessionRecorder } from "./pi-session.js";
 import { withPiTelemetry } from "./pi-telemetry.js";
+import { withPiThinkingActivity } from "./pi-thinking-activity.js";
 import { observedPiStream } from "./pi-usage.js";
 import type { RuntimeContextDecision } from "./runtime-context.js";
 import { createRuntimeContextPolicy } from "./runtime-context.js";
 import { deliverFinishedShells } from "./shell-command-stream.js";
 import { sparkDefaultBotSystemPrompt } from "./spark-reply-style.js";
+import { withoutThinkingFrom } from "./thinking-signatures.js";
+import type { ComputerModeCheckpoint } from "./turn-checkpoint.js";
 import {
   restoreTurnCheckpoint,
   serializeTurnCheckpoint,
   unresolvedTurnCheckpointCalls,
 } from "./turn-checkpoint.js";
+import { midTaskMessageFromPrompt, midTaskMessagePrompt } from "./user-progress.js";
 
 const running = new Map<string, { controller: AbortController; work: Promise<void> }>();
 // Some OpenAI-compatible models return EOS immediately after a tool result
 // instead of taking another assistant turn. A bounded internal follow-up keeps
 // that provider quirk from making a long task look complete after one step.
 const MAX_SILENT_TOOL_CONTINUATIONS = 3;
-// Sent in the user's role, so marked as automated: models took the old wording for the
-// user telling them never to stop, and kept going instead of asking.
+// Sent in the user's role, so marked as automated: otherwise models read it as the user
+// telling them never to stop, and keep going instead of asking.
 export const SILENT_TOOL_CONTINUATION_PROMPT = automated(
   "Your last turn ended right after a tool result, without a reply. Continue the original task from the latest tool result. If you need information or a decision from the user, ask them instead of guessing; otherwise use any remaining tools needed, then give the user the final answer.",
 );
@@ -118,7 +134,6 @@ export const SILENT_ALLOWED_TOOL_CONTINUATION_PROMPT = automated(
 // continue stores that sentence as the reply, and the next "continue" runs
 // tools and misses a final answer again.
 export { MISSING_TOOL_FINAL_RESPONSE_ERROR } from "@rakazo/core";
-// The executor canonicalizes checkpoint tool names with the same mapping.
 
 export interface PiAgentRuntimeOptions {
   /** Directory where Pi JSONL sessions are written. Omit to disable recording. */
@@ -204,11 +219,28 @@ export class PiAgentRuntime implements AgentRuntime {
       ? AbortSignal.any([controller.signal, context.signal])
       : controller.signal;
     const queue = createQueue();
+    let thinking = false;
+    const setThinking = (active: boolean) => {
+      const next = active && !signal.aborted;
+      if (thinking === next) return;
+      thinking = next;
+      queue.push({ type: "thinking", active: next });
+    };
+    const stopThinking = () => setThinking(false);
+    signal.addEventListener("abort", stopThinking, { once: true });
 
     const work = withPiTelemetry(request, async (span) => {
       let trackedBudget: ToolCallBudget | undefined;
       let resumeHost: ToolHost | undefined;
       try {
+        const savedMode = request.turnCheckpoint
+          ? restoreTurnCheckpoint(request.turnCheckpoint, request.model).computerMode
+          : undefined;
+        // An executor that resolved the pinned models already passes them in.
+        if (savedMode && !request.computerModel) {
+          const pinned = await restoreComputerModels(request, savedMode);
+          request = { ...request, model: pinned.main, computerModel: pinned.computer };
+        }
         const selectedModel = resolveRuntimeModel(request.model);
         if (!selectedModel.model) {
           queue.push({
@@ -231,6 +263,21 @@ export class PiAgentRuntime implements AgentRuntime {
           apiKey,
           credentials: selectedModel.credentials,
         };
+        const computer = request.computerModel ? computerTarget(request.computerModel) : undefined;
+        let mode = savedMode?.mode ?? "main";
+        // Where the current computer-mode span began; a resumed span is not known, so it is all.
+        let computerFrom = 0;
+        // The last finished span, whose reasoning is not the main model's, even on the same model id.
+        let computerSpan: [number, number] | undefined;
+        let mainTarget = initialModelTarget;
+        let computerMode: ComputerModeCheckpoint | undefined = computer
+          ? {
+              version: 1,
+              mode,
+              main: computerSelection(request.model),
+              computer: computerSelection(computer.config),
+            }
+          : undefined;
         const host: ToolHost = {
           queue,
           context,
@@ -238,7 +285,8 @@ export class PiAgentRuntime implements AgentRuntime {
           onContextDecision: this.onContextDecision,
           modelCallObserver: this.modelCallObserver,
           request,
-          activeModel: initialModelTarget,
+          activeModel: mode === "computer" ? computer! : initialModelTarget,
+          computerModeAllowed: computer ? () => mode === "computer" : undefined,
           models,
           model: completionModel,
           apiKey,
@@ -251,9 +299,11 @@ export class PiAgentRuntime implements AgentRuntime {
           depth: 0,
           pausePending: false,
           pendingShells: [],
+          modelResponses: 0,
         };
         resumeHost = host;
-        const tools = toAgentTools(toolDefs, host);
+        const allTools = toAgentTools(toolDefs, host);
+        let tools = allTools;
         const seenSteeringIds: string[] = [];
         const initialSteering = request.claimSteering ? await request.claimSteering([]) : [];
         let hasCurrentImages = Boolean(
@@ -262,11 +312,12 @@ export class PiAgentRuntime implements AgentRuntime {
             initialSteering.some((item) => item.images?.length && !item.imageFileFallback),
         );
         seenSteeringIds.push(...initialSteering.map((item) => item.id));
+        // A computer-mode checkpoint was written by the computer model; keep its thinking.
         const restored = request.turnCheckpoint
-          ? restoreTurnCheckpoint(request.turnCheckpoint, {
-              provider: model.provider,
-              id: model.id,
-            })
+          ? restoreTurnCheckpoint(
+              request.turnCheckpoint,
+              mode === "computer" && computer ? computer.model : model,
+            )
           : undefined;
         const history =
           restored?.messages ??
@@ -288,11 +339,22 @@ export class PiAgentRuntime implements AgentRuntime {
                 ...initialSteering.map((item) => item.messageId),
               ],
         );
-        const initialPrompt = initialSteering.length
-          ? `${request.prompt}\n\nAdditional user context:\n${initialSteering
-              .map((item) => item.text)
-              .join("\n")}`
-          : request.prompt;
+        // In a group the person's mid-run messages carry the same label as their history and
+        // prompt; the raw text stays what ids and content are matched on.
+        const steeringText = (item: AgentSteeringMessage) =>
+          !request.promptSpeaker
+            ? item.text
+            : item.origin === "user"
+              ? speakerText(request.promptSpeaker, item.text)
+              : neutralizeSpeakerLabels(item.text);
+        const promptWithSteering = (
+          text: (item: AgentSteeringMessage) => string,
+          prompt = request.prompt,
+        ) =>
+          initialSteering.length
+            ? `${prompt}\n\nAdditional user context:\n${initialSteering.map(text).join("\n")}`
+            : prompt;
+        const initialPrompt = promptWithSteering((item) => item.text);
         const systemPrompt =
           restored?.systemPrompt ??
           (request.instructions ||
@@ -311,9 +373,13 @@ export class PiAgentRuntime implements AgentRuntime {
               botId: request.botId,
               userId: context.userId,
               traceId: context?.traceId,
-              provider: model.provider,
-              model: model.id,
-              thinkingLevel,
+              // A resumed computer-mode turn starts on the computer model.
+              provider: host.activeModel.model.provider,
+              model: host.activeModel.model.id,
+              thinkingLevel: thinkingLevelFor(
+                host.activeModel.model,
+                host.activeModel.config.thinkingLevel,
+              ),
               systemPrompt,
               initialMessages: history,
             });
@@ -337,8 +403,9 @@ export class PiAgentRuntime implements AgentRuntime {
         let sentContext: { context: Context; sourceLength: number } | undefined;
         const prepareContext = (ctx: Context, m: Model<Api>) => {
           const prepared = contextPolicy.prepareContext(ctx, m);
+          // The checkpoint keeps what the policy chose; the opening turn is added to each call.
           sentContext = { context: prepared, sourceLength: ctx.messages.length };
-          return prepared;
+          return withLeadingUser(prepared);
         };
         const usageHooks = {
           prepareContext,
@@ -360,7 +427,9 @@ export class PiAgentRuntime implements AgentRuntime {
         const hasBackups = Boolean(request.fallbackModels?.length);
         let agent: Agent;
         let activeStreamTarget = host.activeModel;
-        const fallbackState: FallbackStreamState = {
+        // A tool result that ended the turn carries the reply the user must still see.
+        let terminatedReply: string | undefined;
+        let fallbackState: FallbackStreamState = {
           request,
           getActive: () => activeStreamTarget,
           signal,
@@ -374,36 +443,39 @@ export class PiAgentRuntime implements AgentRuntime {
             if (hasCurrentImages && !target.model.input.includes("image")) {
               throw new Error(MODEL_IMAGE_INPUT_ERROR);
             }
-            return reliableModelStream(
-              target.models,
-              target.model,
-              ctx,
-              withCloudflareAuth(target.config, options),
-              target.config.maxTokens,
-              () => target.credentials?.accessToken ?? target.apiKey,
-              (preparedOptions) =>
-                observedPiStream(
-                  target.models,
-                  target.model,
-                  ctx,
-                  preparedOptions,
-                  (event) => queue.push(event),
-                  target.config.callObserver ?? this.modelCallObserver,
-                  {
-                    operationKind: request.usageOperationKind ?? "answer",
-                    userId: context?.userId,
-                    runId: request.runId,
-                  },
-                  {
-                    ...usageHooks,
-                    prepareContext,
-                    onProviderError: (message) => {
-                      providerFailures.add(message.content);
-                      providerCircuit.note(message);
+            return withPiThinkingActivity(
+              reliableModelStream(
+                target.models,
+                target.model,
+                ctx,
+                withCloudflareAuth(target.config, options),
+                target.config.maxTokens,
+                () => target.credentials?.accessToken ?? target.apiKey,
+                (preparedOptions) =>
+                  observedPiStream(
+                    target.models,
+                    target.model,
+                    ctx,
+                    preparedOptions,
+                    (event) => queue.push(event),
+                    target.config.callObserver ?? this.modelCallObserver,
+                    {
+                      operationKind: request.usageOperationKind ?? "answer",
+                      userId: context?.userId,
+                      runId: request.runId,
                     },
-                  },
-                ),
-              target.config.cacheCapabilities?.retentionMode,
+                    {
+                      ...usageHooks,
+                      prepareContext,
+                      onProviderError: (message) => {
+                        providerFailures.add(message.content);
+                        providerCircuit.note(message);
+                      },
+                    },
+                  ),
+                target.config.cacheCapabilities?.retentionMode,
+              ),
+              setThinking,
             );
           },
           onContextLimit: (contextWindow) => {
@@ -430,6 +502,96 @@ export class PiAgentRuntime implements AgentRuntime {
             host.apiKey = target.credentials?.accessToken ?? target.apiKey;
           },
         };
+        const mainFallbackState = fallbackState;
+        const computerFallbackState: FallbackStreamState | undefined = computer
+          ? {
+              ...fallbackState,
+              request: { ...request, model: computer.config, fallbackModels: [] },
+              attempted: new Set(),
+              backupOutcomes: new Map(),
+            }
+          : undefined;
+        const setTarget = (target: RuntimeModelTarget) => {
+          // Keep message origin metadata: Pi's per-provider serializers translate foreign
+          // reasoning signatures and tool/result IDs together, including after resume.
+          activeStreamTarget = target;
+          host.activeModel = target;
+          host.models = target.models;
+          host.model = target.model;
+          host.apiKey = target.credentials?.accessToken ?? target.apiKey;
+          contextPolicy = contextPolicyFor(target);
+          if (agent) {
+            agent.state.model = target.model;
+            agent.state.thinkingLevel = thinkingLevelFor(target.model, target.config.thinkingLevel);
+          }
+        };
+        const modeTools = () => {
+          if (!computer) return allTools;
+          const transition = computerTransitionTool(
+            mode,
+            async () => {
+              const next = mode === "main" ? computer : mainTarget;
+              await request.onModelChange?.(
+                next.config.provider,
+                next.config.id,
+                next === computer,
+              );
+              signal.throwIfAborted();
+              if (mode === "main") {
+                mainTarget = {
+                  ...activeStreamTarget,
+                  config: {
+                    ...activeStreamTarget.config,
+                    thinkingLevel: agent.state.thinkingLevel,
+                  },
+                };
+                mode = "computer";
+                computerFrom = agent.state.messages.length;
+                fallbackState = computerFallbackState!;
+                setTarget(computer);
+              } else {
+                mode = "main";
+                computerSpan = [computerFrom, agent.state.messages.length];
+                fallbackState = mainFallbackState;
+                setTarget(mainTarget);
+              }
+              computerMode = {
+                version: 1,
+                mode,
+                main: computerSelection(mainTarget.config),
+                computer: computerSelection(computer.config),
+              };
+              if (mode === "computer")
+                fallbackState.messagesBeforeSwitch = agent.state.messages.length;
+              tools = modeTools();
+              agent.state.tools = tools;
+            },
+            signal,
+          );
+          if (
+            allTools.some((tool) =>
+              ["enter_computer_mode", "leave_computer_mode"].includes(tool.name),
+            )
+          )
+            throw new Error("Computer mode tool name collision");
+          return [
+            ...allTools.filter(
+              (tool) => mode === "computer" || !COMPUTER_MODE_TOOLS.has(tool.label),
+            ),
+            transition,
+          ];
+        };
+        tools = modeTools();
+        if (computer) {
+          fallbackState = mode === "computer" ? computerFallbackState! : mainFallbackState;
+          setTarget(activeStreamTarget);
+          if (savedMode)
+            await request.onModelChange?.(
+              activeStreamTarget.config.provider,
+              activeStreamTarget.config.id,
+              mode === "computer",
+            );
+        }
         agent = new Agent({
           sessionId: conversationSessionId(request.threadId, request.botId),
           steeringMode: "all",
@@ -439,9 +601,10 @@ export class PiAgentRuntime implements AgentRuntime {
               ctx,
               withAutomatedLabels({ ...options, fetch: this.modelFetch ?? options?.fetch }),
             ),
-          getApiKey: hasBackups
-            ? async () => activeStreamTarget.credentials?.accessToken ?? activeStreamTarget.apiKey
-            : async () => apiKey,
+          getApiKey:
+            hasBackups || computer
+              ? async () => activeStreamTarget.credentials?.accessToken ?? activeStreamTarget.apiKey
+              : async () => apiKey,
           finishTurn: async (turn, turnSignal) => {
             await deliverFinishedShells(
               (text) => {
@@ -456,28 +619,63 @@ export class PiAgentRuntime implements AgentRuntime {
               turnSignal,
             );
           },
-          prepareNextTurnWithContext: async () => {
-            if (!request.claimSteering) return undefined;
+          prepareNextTurnWithContext: async (turn) => {
+            const update = computer
+              ? {
+                  context: {
+                    ...turn.context,
+                    tools,
+                    messages:
+                      mode === "main" && computerSpan
+                        ? withoutThinkingFrom(turn.context.messages, ...computerSpan)
+                        : turn.context.messages,
+                  },
+                  model: activeStreamTarget.model,
+                  thinkingLevel: thinkingLevelFor(
+                    activeStreamTarget.model,
+                    activeStreamTarget.config.thinkingLevel,
+                  ),
+                }
+              : undefined;
+            if (!request.claimSteering) return update;
+            // The turn is ending at a terminating result that aborted the agent; no
+            // model request would answer a follow-up claimed now, and a completed run
+            // deletes its claimed steering. Leave the message queued for the next run.
+            if (terminatedReply && !host.pausePending) return update;
             const steering = await request.claimSteering([...seenSteeringIds]);
-            if (steering.length === 0) return undefined;
+            if (steering.length === 0) return update;
             seenSteeringIds.push(...steering.map((item) => item.id));
             for (const item of steering) representedHistoryIds.add(item.messageId);
             if (steering.some((item) => item.images?.length && !item.imageFileFallback))
               hasCurrentImages = true;
             for (const item of steering) {
               const images = toPiImages(item.images);
+              const text =
+                item.origin === "user"
+                  ? midTaskMessagePrompt(
+                      steeringText(item),
+                      toolDefs.some((tool) => tool.name === "message_user"),
+                    )
+                  : midTaskMessageFromPrompt(steeringText(item), item.origin);
               agent.steer({
                 role: "user",
-                content: images.length ? [{ type: "text", text: item.text }, ...images] : item.text,
+                content: images.length ? [{ type: "text", text }, ...images] : text,
                 timestamp: Date.now(),
               });
             }
-            return undefined;
+            // Ordered with the turn's other events, so the run can treat it as a turn boundary.
+            queue.push({
+              type: "steered",
+              fromRunUser: steering.some((item) => item.origin === "user"),
+            });
+            return update;
           },
           initialState: {
             systemPrompt,
-            model: completionModel,
-            thinkingLevel,
+            model: activeStreamTarget.model,
+            thinkingLevel: computer
+              ? thinkingLevelFor(activeStreamTarget.model, activeStreamTarget.config.thinkingLevel)
+              : thinkingLevel,
             tools,
             messages: history,
           },
@@ -506,6 +704,16 @@ export class PiAgentRuntime implements AgentRuntime {
               ));
           const checkpoint = {
             version: 1 as const,
+            ...(computerMode
+              ? {
+                  computerMode: {
+                    ...computerMode,
+                    main: computerSelection(
+                      mode === "main" ? activeStreamTarget.config : mainTarget.config,
+                    ),
+                  },
+                }
+              : {}),
             provider: activeStreamTarget.model.provider,
             model: activeStreamTarget.model.id,
             systemPrompt,
@@ -572,6 +780,9 @@ export class PiAgentRuntime implements AgentRuntime {
         // it counts as the final reply, including when the completed message omits it.
         let streamedBeforePendingFinal = 0;
         agent.subscribe(async (event) => {
+          if (event.type === "tool_execution_end" && isTerminatingReplyResult(event.result)) {
+            terminatedReply = terminatingReplyText(event.result) ?? terminatedReply;
+          }
           if (event.type === "tool_execution_end" && !event.result.terminate) {
             finishedCalls.set(event.toolCallId, {
               role: "toolResult",
@@ -584,9 +795,11 @@ export class PiAgentRuntime implements AgentRuntime {
             });
           }
           if (event.type === "message_end") {
+            stopThinking();
             await piSession?.appendMessage(event.message);
           }
           if (event.type === "tool_execution_start") {
+            stopThinking();
             finishedCalls.delete(event.toolCallId);
             if (host.toolCallBudget.exceeded) return;
             toolCalls += 1;
@@ -600,7 +813,11 @@ export class PiAgentRuntime implements AgentRuntime {
             });
           }
           if (event.type === "message_start" && event.message.role === "assistant") {
+            host.modelResponses = (host.modelResponses ?? 0) + 1;
             currentMessageStreamed = "";
+            // A later assistant turn supersedes a terminating result's carried reply,
+            // except the empty aborted message of a turn the result itself ended.
+            if (event.message.stopReason !== "aborted") terminatedReply = undefined;
             if (!joinCutReply) joinDropped = "";
             // A later message (after a finished shell or steering, not only a tool call)
             // must not run its text straight on from the previous one.
@@ -742,6 +959,8 @@ export class PiAgentRuntime implements AgentRuntime {
           if (restored) {
             // Complete unresolved calls before another model choice. The executor
             // still enforces canonical approved arguments, routes and idempotency.
+            // A terminating result ends the resumed turn like the live one.
+            let replayTerminated = false;
             const unresolved = new Set(unresolvedTurnCheckpointCalls(history as Message[]));
             if (restored.executionMode !== "sequential") {
               for (const message of [...history]) {
@@ -822,12 +1041,20 @@ export class PiAgentRuntime implements AgentRuntime {
                 unresolved.delete(call);
                 toolCalls += 1;
                 await piSession?.appendMessage(agent.state.messages.at(-1)!);
-                if ("terminate" in result && result.terminate) break;
+                if (host.pausePending || isTerminatingReplyResult(result)) {
+                  if (!host.pausePending) {
+                    // Replay must not run more calls or another model turn after the
+                    // result that already ended this turn; its reply is the final one.
+                    terminatedReply = terminatingReplyText(result) ?? terminatedReply;
+                    replayTerminated = true;
+                  }
+                  break;
+                }
               }
-              if (host.pausePending) break;
+              if (host.pausePending || replayTerminated) break;
             }
             restoringCalls = false;
-            if (!host.pausePending) {
+            if (!host.pausePending && !replayTerminated) {
               const addedHistory = withoutSteeringMessages(request.history, initialSteering).filter(
                 (message) => message.id && !representedHistoryIds.has(message.id),
               );
@@ -840,16 +1067,34 @@ export class PiAgentRuntime implements AgentRuntime {
                 agent.state.messages.push({
                   role: "user",
                   content: images.length
-                    ? [{ type: "text", text: item.text }, ...images]
-                    : item.text,
+                    ? [{ type: "text", text: steeringText(item) }, ...images]
+                    : steeringText(item),
                   timestamp: Date.now(),
                 });
+              }
+              // A run cannot continue from an assistant message. What trails here is this
+              // bot's own earlier text, which the restored transcript already carries.
+              for (let last = agent.state.messages.at(-1); isHistoryReply(last); ) {
+                agent.state.messages.pop();
+                last = agent.state.messages.at(-1);
               }
               toolWorkPendingFinal = true;
               await agent.continue();
             }
           } else {
-            await agent.prompt(initialPrompt, images?.length ? images : undefined);
+            // Only the person's messages go under their label; anyone else's is framed by origin.
+            await agent.prompt(
+              promptWithSteering(
+                (item) =>
+                  item.origin === "user"
+                    ? steeringText(item)
+                    : midTaskMessageFromPrompt(steeringText(item), item.origin),
+                request.promptSpeaker
+                  ? speakerText(request.promptSpeaker, request.prompt)
+                  : request.prompt,
+              ),
+              images?.length ? images : undefined,
+            );
           }
         } finally {
           try {
@@ -866,16 +1111,23 @@ export class PiAgentRuntime implements AgentRuntime {
         // with a durable assistant message instead of a failed run.
         const budgetExceeded = host.toolCallBudget.exceeded;
         const terminalMessage = agent.state.messages.at(-1);
-        // pi-agent-core records ordinary provider failures as an empty assistant
-        // message (stopReason "error" / "length") and still resolves the run.
-        // state.errorMessage covers the error stop; the message itself covers a
-        // length stop and any failure that never landed on state.
+        // pi-agent-core records provider failures as an empty assistant message and
+        // still resolves the run; state.errorMessage misses length stops and failures
+        // that never landed on state.
         const providerFailure =
           !budgetExceeded && terminalMessage ? providerFailureText(terminalMessage) : undefined;
         const error = outputCutFailed
           ? MODEL_OUTPUT_CUT_ERROR
           : agent.state.errorMessage || providerFailure;
-        if (error && !budgetExceeded && (!host.pausePending || signal.aborted)) {
+        // A turn ended at a terminating tool result leaves the abort's message on the
+        // agent; the reply that result carries is the answer, not a failure.
+        const endedAtToolResult = Boolean(terminatedReply) && !host.pausePending && !signal.aborted;
+        if (
+          error &&
+          !budgetExceeded &&
+          !endedAtToolResult &&
+          (!host.pausePending || signal.aborted)
+        ) {
           let message = sanitizeProviderError(activeStreamTarget.model.provider, error);
           if (
             !signal.aborted &&
@@ -896,7 +1148,13 @@ export class PiAgentRuntime implements AgentRuntime {
           }
           throw modelFailure(error, message);
         }
-        if (!budgetExceeded && terminalMessage && !messageHasToolCall(terminalMessage)) {
+        // Only an assistant message can hold the answer a provider left off the deltas;
+        // a trailing tool result is tool output, not the model's reply.
+        if (
+          !budgetExceeded &&
+          terminalMessage?.role === "assistant" &&
+          !messageHasToolCall(terminalMessage)
+        ) {
           const completedText = assistantText(terminalMessage);
           const terminalText =
             joinDropped && completedText.startsWith(joinDropped)
@@ -924,6 +1182,16 @@ export class PiAgentRuntime implements AgentRuntime {
           } else {
             queue.push({ type: "text", text: budgetMessage });
             streamed = budgetMessage;
+          }
+        } else if (terminatedReply && !host.pausePending) {
+          // The turn ended at a terminating tool result; its reply is the final answer.
+          if (streamed.trim()) {
+            const suffix = `\n\n${terminatedReply}`;
+            queue.push({ type: "text", text: suffix });
+            streamed += suffix;
+          } else {
+            queue.push({ type: "text", text: terminatedReply });
+            streamed = terminatedReply;
           }
         } else if (!host.pausePending && toolWorkPendingFinal) {
           if (request.allowSilentEmpty) {
@@ -960,6 +1228,8 @@ export class PiAgentRuntime implements AgentRuntime {
                 : new Error(message),
         );
       } finally {
+        stopThinking();
+        signal.removeEventListener("abort", stopThinking);
         queue.close();
         if (trackedBudget) {
           const keepForResume =
@@ -989,11 +1259,44 @@ function toPiImages(images: AgentRunRequest["currentTurnImages"]) {
   }));
 }
 
+/**
+ * Provider, api and model stamped on replayed own replies. None matches a real model, so Pi
+ * replays them as plain text from another model: no signatures or reasoning, same on every provider.
+ */
+const HISTORY_ASSISTANT = { api: "rakazo-history", provider: "rakazo-history", model: "history" };
+const NO_USAGE = {
+  input: 0,
+  output: 0,
+  cacheRead: 0,
+  cacheWrite: 0,
+  totalTokens: 0,
+  cost: { input: 0, output: 0, cacheRead: 0, cacheWrite: 0, total: 0 },
+};
+/** Stands in for the opening turn when the window starts on a bot message (Bedrock needs a user first). */
+const CONVERSATION_START = "[Conversation start]";
+
+type HistoryMessage = Message & {
+  rakazoHistory: true;
+  rakazoMessageId?: string;
+  rakazoCreatedAt?: string;
+};
+
+/** What the model reads for a message by someone other than this bot or the human of a direct chat. */
+function speakerText(speaker: string, text: string): string {
+  return `[${speaker}]: ${neutralizeSpeakerLabels(text)}`;
+}
+
+/**
+ * Replays stored messages with their real roles. This bot's own replies are assistant turns;
+ * a message with a `speaker` (another bot, or the human in a group) is a user turn that starts
+ * with "[speaker]: ". The label exists only here: it is never stored or shown in the app.
+ * Content is a pure function of the message, so replayed history is stable for prompt caching.
+ */
 function toHistory(
   history: AgentRunRequest["history"],
   prompt: string,
   sourceMessageId?: string | null,
-) {
+): HistoryMessage[] {
   let duplicatePromptIndex = -1;
   for (let index = history.length - 1; index >= 0; index -= 1) {
     const message = history[index];
@@ -1011,18 +1314,61 @@ function toHistory(
       : history.filter((_, index) => index !== duplicatePromptIndex);
   return prior
     .filter((m) => m.role === "user" || m.role === "assistant")
-    .map((m) => {
-      const text = m.role === "assistant" ? `Assistant: ${m.content}` : m.content;
-      const images = m.role === "assistant" ? [] : toPiImages(m.images);
-      return {
-        role: "user" as const,
-        content: images.length ? [{ type: "text" as const, text }, ...images] : text,
-        timestamp: Date.now(),
-        rakazoHistory: true,
+    .flatMap((m): HistoryMessage[] => {
+      const created = m.createdAt ? Date.parse(m.createdAt) : Number.NaN;
+      const common = {
+        timestamp: Number.isNaN(created) ? 0 : created,
+        rakazoHistory: true as const,
         rakazoMessageId: m.id,
         rakazoCreatedAt: m.createdAt,
       };
+      if (m.role === "assistant" && !m.speaker) {
+        // A reply that holds only tool work has no text to replay.
+        if (!m.content.trim()) return [];
+        return [
+          {
+            role: "assistant" as const,
+            content: [{ type: "text" as const, text: m.content }],
+            ...HISTORY_ASSISTANT,
+            usage: NO_USAGE,
+            stopReason: "stop" as const,
+            ...common,
+          },
+        ];
+      }
+      const text = m.speaker ? speakerText(m.speaker, m.content) : m.content;
+      // Pictures ride on the human's turn only, never on a bot's.
+      const images = m.role === "assistant" ? [] : toPiImages(m.images);
+      return [
+        {
+          role: "user" as const,
+          content: images.length ? [{ type: "text" as const, text }, ...images] : text,
+          ...common,
+        },
+      ];
     });
+}
+
+function isHistoryReply(message: Message | undefined): boolean {
+  return (
+    message?.role === "assistant" &&
+    Boolean((message as Message & { rakazoHistory?: true }).rakazoHistory)
+  );
+}
+
+/**
+ * Every provider needs the first message to be the user's (Bedrock rejects anything else, and
+ * chat templates assume it), but a window or a trim can start on one of this bot's replies.
+ * Called on each model call, so it holds whatever the context policy kept.
+ */
+function withLeadingUser(context: Context): Context {
+  const first = context.messages.findIndex((message) => (message.role as string) !== "system");
+  if (first < 0 || context.messages[first]!.role === "user") return context;
+  const start: Message = { role: "user", content: CONVERSATION_START, timestamp: 0 };
+  return {
+    ...context,
+    messages: [...context.messages.slice(0, first), start, ...context.messages.slice(first)],
+  };
 }
 
 function withoutSteeringMessages(
