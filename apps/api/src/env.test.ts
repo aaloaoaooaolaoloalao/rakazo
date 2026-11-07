@@ -1,5 +1,9 @@
+import { generateKeyPairSync } from "node:crypto";
 import { describe, expect, it } from "vitest";
 import { loadEnv } from "./env.js";
+
+const { privateKey: appleTestKey } = generateKeyPairSync("ec", { namedCurve: "prime256v1" });
+const appleTestPem = appleTestKey.export({ type: "pkcs8", format: "pem" }).toString();
 
 const base = {
   DATABASE_URL: "postgres://rakazo:rakazo@127.0.0.1:5433/rakazo",
@@ -363,7 +367,9 @@ describe("OIDC environment", () => {
     },
   );
   it("guards password-only lockout without contacting discovery", () => {
-    expect(() => loadEnv({ ...base, AUTH_PASSWORD_ENABLED: "false" })).toThrow(/requires OIDC/);
+    expect(() => loadEnv({ ...base, AUTH_PASSWORD_ENABLED: "false" })).toThrow(
+      /requires OIDC or Sign in with Apple/,
+    );
     expect(loadEnv({ ...base, ...oidc, AUTH_PASSWORD_ENABLED: "false" }).passwordAuth).toBe(false);
   });
   it("leaves the breached password check off unless explicitly enabled", () => {
@@ -384,6 +390,33 @@ describe("OIDC environment", () => {
     expect(
       loadEnv({ ...base, ...oidc, OIDC_ALLOW_SIGNUP_BYPASS: "true" }).oidc?.allowSignupBypass,
     ).toBe(true);
+  });
+});
+
+describe("Sign in with Apple environment", () => {
+  const apple = {
+    APPLE_CLIENT_ID: "com.example.sparkai",
+    APPLE_TEAM_ID: "TEAM000000",
+    APPLE_KEY_ID: "KEY000000",
+    APPLE_KEY_P8: appleTestPem,
+  };
+
+  it("stays unset when Apple env is missing or incomplete", () => {
+    expect(loadEnv(base).apple).toBeUndefined();
+    expect(loadEnv({ ...base, APPLE_CLIENT_ID: "com.example.app" }).apple).toBeUndefined();
+  });
+
+  it("loads a complete Apple configuration", () => {
+    expect(loadEnv({ ...base, ...apple }).apple).toMatchObject({
+      clientId: "com.example.sparkai",
+      appBundleIdentifier: "com.example.sparkai",
+      teamId: "TEAM000000",
+      keyId: "KEY000000",
+    });
+  });
+
+  it("allows password-only lockout when Apple is configured", () => {
+    expect(loadEnv({ ...base, ...apple, AUTH_PASSWORD_ENABLED: "false" }).passwordAuth).toBe(false);
   });
 });
 

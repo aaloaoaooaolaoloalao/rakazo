@@ -553,6 +553,7 @@ async function buildApp(overrides: CreateAppOverrides): Promise<AppHandles> {
     passwordAuth: env.passwordAuth,
     breachedPasswordCheck: env.breachedPasswordCheck,
     oidc: env.oidc,
+    apple: env.apple,
     secret: env.authSecret,
     baseURL: env.authUrl,
     webOrigin: env.webOrigin,
