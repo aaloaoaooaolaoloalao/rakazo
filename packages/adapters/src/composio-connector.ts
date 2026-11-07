@@ -31,12 +31,35 @@ export type ComposioSession = Pick<
   "sessionId" | "toolkits" | "tools" | "execute" | "authorize"
 >;
 
+export type ComposioRequestOptions = { signal?: AbortSignal; revokeOnDelete?: boolean };
+
 /** The Composio SDK surface the connector uses; offline tests inject a stateful fake. */
 export type ComposioClient = {
   create(userId: string, config: ToolRouterCreateSessionConfig): Promise<ComposioSession>;
   sessions: { use(sessionId: string): Promise<ComposioSession> };
-  connectedAccounts: Pick<Composio["connectedAccounts"], "list" | "waitForConnection" | "delete">;
+  connectedAccounts: Pick<Composio["connectedAccounts"], "list" | "waitForConnection"> & {
+    delete: (
+      nanoid: string,
+      requestOptions?: ComposioRequestOptions,
+    ) => ReturnType<Composio["connectedAccounts"]["delete"]>;
+    revoke?: (
+      nanoid: string,
+      requestOptions?: ComposioRequestOptions,
+    ) => Promise<unknown>;
+  };
 };
+
+const COMPOSIO_API_BASE = "https://backend.composio.dev/api/v3.1";
+
+const ALL_CONNECTED_ACCOUNT_STATUSES: ConnectedAccountStatus[] = [
+  "INITIALIZING",
+  "INITIATED",
+  "ACTIVE",
+  "FAILED",
+  "EXPIRED",
+  "INACTIVE",
+  "REVOKED",
+];
 
 /** Account states the user can only leave by reconnecting. */
 const RECONNECT_STATUSES: ConnectedAccountStatus[] = ["EXPIRED", "INACTIVE", "FAILED", "REVOKED"];
@@ -98,6 +121,8 @@ export type ComposioCatalogItem = Omit<ConnectorCatalogItem, "connectorId">;
 export interface ComposioProvider extends ManagedConnectorProvider {
   warmDirectory(): Promise<void>;
   listConnectedSlugs(userId: string): Promise<string[]>;
+  /** Revoke and delete every Composio connected account for this Rakazo user id. Best-effort. */
+  purgeUserConnectedAccounts(userId: string, signal?: AbortSignal): Promise<void>;
 }
 
 export function filterCatalog<T extends Pick<ComposioCatalogItem, "name" | "slug">>(
@@ -790,6 +815,32 @@ export class ComposioConnector implements ComposioProvider {
    * the connected-account id revoke must delete. Prefer unused remotes so a
    * second Gmail connect does not reuse the first account's id.
    */
+  /**
+   * On account deletion, revoke upstream OAuth for every remote connected account
+   * mapped to this user id, then delete each row at Composio with revoke_on_delete.
+   * Failures for one account do not block the rest or account deletion.
+   */
+  async purgeUserConnectedAccounts(userId: string, signal?: AbortSignal): Promise<void> {
+    const requestOptions = { signal };
+    let accounts: Array<{ id: string; toolkitSlug?: string }>;
+    try {
+      accounts = await this.listAllConnectedAccounts(userId, requestOptions);
+    } catch (error) {
+      getLogger().warn("account.delete.composio_list_failed", {
+        "user.id": userId,
+        error: sanitizeComposioError(error),
+      });
+      return;
+    }
+    for (const account of accounts) {
+      await this.revokeAndDeleteConnectedAccount(
+        account.id,
+        account.toolkitSlug,
+        requestOptions,
+      );
+    }
+  }
+
   async resolveConnectedAccountId(
     userId: string,
     slug: string,
@@ -818,14 +869,175 @@ export class ComposioConnector implements ComposioProvider {
     return ids.find((id) => !excluded.has(id));
   }
 
+  private async listAllConnectedAccounts(
+    userId: string,
+    requestOptions?: ComposioRequestOptions,
+  ): Promise<Array<{ id: string; toolkitSlug?: string }>> {
+    const accounts = await collectPages(async (cursor) => {
+      const { connectedAccounts } = await this.sdk();
+      const page = await connectedAccounts.list(
+        {
+          userIds: [userId],
+          statuses: ALL_CONNECTED_ACCOUNT_STATUSES,
+          limit: 50,
+          ...(cursor ? { cursor } : {}),
+        },
+        requestOptions,
+      );
+      return { items: page.items ?? [], cursor: page.nextCursor ?? undefined };
+    }, MAX_ACCOUNT_PAGES);
+    return accounts.flatMap((item) => {
+      const id = item.id;
+      if (!id) return [];
+      const toolkit =
+        item.toolkit && typeof item.toolkit === "object" && "slug" in item.toolkit
+          ? String((item.toolkit as { slug?: string }).slug ?? "").trim() || undefined
+          : undefined;
+      return [{ id, toolkitSlug: toolkit }];
+    });
+  }
+
+  private async revokeAndDeleteConnectedAccount(
+    accountId: string,
+    toolkitSlug: string | undefined,
+    requestOptions?: ComposioRequestOptions,
+  ): Promise<void> {
+    try {
+      await this.revokeConnectedAccountAtProvider(accountId, requestOptions);
+    } catch (error) {
+      if (isComposioNotFoundError(error)) return;
+      if (isComposioRevocationNotSupportedError(error)) {
+        getLogger().warn("account.delete.composio_revoke_unsupported", {
+          "connected_account.id": accountId,
+          ...(toolkitSlug ? { "toolkit.slug": toolkitSlug } : {}),
+        });
+      } else {
+        getLogger().warn("account.delete.composio_revoke_failed", {
+          "connected_account.id": accountId,
+          ...(toolkitSlug ? { "toolkit.slug": toolkitSlug } : {}),
+          error: sanitizeComposioError(error),
+        });
+      }
+    }
+    try {
+      await this.deleteConnectedAccount(accountId, requestOptions);
+    } catch (error) {
+      if (isComposioNotFoundError(error)) return;
+      getLogger().warn("account.delete.composio_delete_failed", {
+        "connected_account.id": accountId,
+        ...(toolkitSlug ? { "toolkit.slug": toolkitSlug } : {}),
+        error: sanitizeComposioError(error),
+      });
+    }
+  }
+
+  private async revokeConnectedAccountAtProvider(
+    accountId: string,
+    requestOptions?: ComposioRequestOptions,
+  ): Promise<void> {
+    const { connectedAccounts } = await this.sdk();
+    if (typeof connectedAccounts.revoke === "function") {
+      await connectedAccounts.revoke(accountId, requestOptions);
+      return;
+    }
+    if (!this.apiKey) {
+      throw new Error("Composio API key is required to revoke connected accounts");
+    }
+    await composioApiRequest(
+      this.apiKey,
+      "POST",
+      `/connected_accounts/${encodeURIComponent(accountId)}/revoke`,
+      requestOptions?.signal,
+    );
+  }
+
+  private async deleteConnectedAccount(
+    accountId: string,
+    requestOptions?: ComposioRequestOptions,
+  ): Promise<void> {
+    const { connectedAccounts } = await this.sdk();
+    await connectedAccounts.delete(accountId, { ...requestOptions, revokeOnDelete: true });
+  }
+
   /** The SDK loads on first use, so deployments without Composio never load it. */
   private async sdk(): Promise<ComposioClient> {
     if (!this.client) {
       const { Composio } = await import("@composio/core");
-      this.client ??= new Composio(this.apiKey ? { apiKey: this.apiKey } : undefined);
+      const composio = new Composio(this.apiKey ? { apiKey: this.apiKey } : undefined);
+      const connectedAccounts = composio.connectedAccounts as ComposioClient["connectedAccounts"];
+      this.client = {
+        create: (userId, config) => composio.create(userId, config),
+        sessions: composio.sessions,
+        connectedAccounts: {
+          list: (...args) => connectedAccounts.list(...args),
+          waitForConnection: (...args) => connectedAccounts.waitForConnection(...args),
+          delete: async (nanoid, requestOptions) => {
+            if (requestOptions?.revokeOnDelete && this.apiKey) {
+              await composioApiRequest(
+                this.apiKey,
+                "DELETE",
+                `/connected_accounts/${encodeURIComponent(nanoid)}?revoke_on_delete=true`,
+                requestOptions.signal,
+              );
+              return { success: true };
+            }
+            return connectedAccounts.delete(nanoid, requestOptions);
+          },
+          revoke:
+            typeof (connectedAccounts as { revoke?: unknown }).revoke === "function"
+              ? (nanoid, requestOptions) =>
+                  (
+                    connectedAccounts as {
+                      revoke: (
+                        id: string,
+                        options?: ComposioRequestOptions,
+                      ) => Promise<unknown>;
+                    }
+                  ).revoke(nanoid, requestOptions)
+              : undefined,
+        },
+      };
     }
     return this.client;
   }
+}
+
+async function composioApiRequest(
+  apiKey: string,
+  method: "POST" | "DELETE",
+  path: string,
+  signal?: AbortSignal,
+): Promise<void> {
+  const response = await fetch(`${COMPOSIO_API_BASE}${path}`, {
+    method,
+    headers: { "x-api-key": apiKey },
+    signal,
+  });
+  if (response.status === 404) return;
+  if (!response.ok) {
+    const detail = sanitizeComposioError(
+      await response.text().catch(() => `HTTP ${response.status}`),
+    );
+    throw Object.assign(new Error(`Composio ${method} ${path} failed`), {
+      status: response.status,
+      message: detail,
+    });
+  }
+}
+
+function isComposioRevocationNotSupportedError(error: unknown): boolean {
+  if (!error || typeof error !== "object") return false;
+  const candidate = error as { status?: unknown; statusCode?: unknown; message?: unknown };
+  const status = candidate.status ?? candidate.statusCode;
+  if (status === 400) return true;
+  const message = String(
+    candidate.message ?? (error instanceof Error ? error.message : error),
+  ).toLowerCase();
+  return (
+    message.includes("cannot be revoked programmatically") ||
+    message.includes("revocationnotsupported") ||
+    message.includes("does not support programmatic revocation")
+  );
 }
 
 function isComposioNotFoundError(error: unknown): boolean {

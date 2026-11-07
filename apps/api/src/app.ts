@@ -589,6 +589,11 @@ async function buildApp(overrides: CreateAppOverrides): Promise<AppHandles> {
     beforeDeleteUser: async (userId) => {
       // First, so a provider failure aborts deletion before anything is destroyed.
       await billing?.cancelForDeletedUser(userId);
+      if (stack.composio) {
+        await stack.composio.purgeUserConnectedAccounts(userId).catch((error) =>
+          getLogger().error("account.delete.composio_purge_failed", error),
+        );
+      }
       await deleteAccountContent(
         {
           prisma,
