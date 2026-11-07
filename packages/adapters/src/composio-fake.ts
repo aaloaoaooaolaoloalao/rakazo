@@ -204,6 +204,12 @@ export class FakeComposioClient implements ComposioClient {
   readonly accounts: FakeAccount[] = [];
   readonly created: Array<{ userId: string; config: ToolRouterCreateSessionConfig }> = [];
   readonly accountListCalls: ConnectedAccountListParams[] = [];
+  readonly revokedAccountIds: string[] = [];
+  /** Accounts that received an explicit connectedAccounts.revoke call. */
+  readonly providerRevokes: string[] = [];
+  readonly deletedAccountIds: string[] = [];
+  readonly deletedWithRevokeOnDelete: string[] = [];
+  revokeShouldFailForToolkit: string | null = null;
   readonly executions: Array<{
     userId: string;
     tool: string;
@@ -256,10 +262,32 @@ export class FakeComposioClient implements ComposioClient {
       }
       return this.toResponse(account);
     },
-    delete: async (id: string): Promise<DeleteResponse> => {
+    revoke: async (id: string): Promise<{ success: true }> => {
+      const account = this.accounts.find((candidate) => candidate.id === id);
+      if (!account) throw notFound(`Connected account ${id} not found`);
+      if (
+        this.revokeShouldFailForToolkit &&
+        account.toolkit === this.revokeShouldFailForToolkit.toLowerCase()
+      ) {
+        throw Object.assign(
+          new Error(`Connected account ${id} cannot be revoked programmatically`),
+          { status: 400 },
+        );
+      }
+      account.status = "REVOKED";
+      this.revokedAccountIds.push(id);
+      this.providerRevokes.push(id);
+      return { success: true };
+    },
+    delete: async (id: string, requestOptions?: { revokeOnDelete?: boolean }): Promise<DeleteResponse> => {
       const index = this.accounts.findIndex((account) => account.id === id);
       if (index < 0) throw notFound(`Connected account ${id} not found`);
+      if (requestOptions?.revokeOnDelete && !this.revokedAccountIds.includes(id)) {
+        this.revokedAccountIds.push(id);
+      }
       const [removed] = this.accounts.splice(index, 1);
+      this.deletedAccountIds.push(id);
+      if (requestOptions?.revokeOnDelete) this.deletedWithRevokeOnDelete.push(id);
       // The mailbox belongs to the user's Gmail; drop it with their last account.
       if (
         removed?.toolkit === "gmail" &&
