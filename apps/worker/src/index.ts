@@ -18,6 +18,7 @@ import {
   createCloudAgentConnection,
   createConnectorStack,
   createDeadJobPruner,
+  createGraphileTaskIdentifierRegistrar,
   createIdleComputerSweeper,
   createJobReconciler,
   createMessagingContextLoader,
@@ -349,6 +350,9 @@ async function main() {
     reconcileHomeStorage: homeStorageSweeper(home),
     reconcileIdleComputers: createIdleComputerSweeper({ prisma, jobs }),
     reconcileDeadJobs: inMemoryJobs ? undefined : createDeadJobPruner(pool),
+    reconcileGraphileTaskIdentifiers: inMemoryJobs
+      ? undefined
+      : createGraphileTaskIdentifierRegistrar(pool),
   });
   let stopHealth: (() => Promise<void>) | undefined;
   const shutdown = new AbortController();

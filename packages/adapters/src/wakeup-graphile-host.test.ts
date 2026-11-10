@@ -28,6 +28,7 @@ vi.mock("graphile-worker", () => ({
 }));
 
 import { RunExecutionHost } from "./run-execution.js";
+import { StaleGraphileTaskMappingError } from "./graphile-task-guard.js";
 import {
   createReservedGraphileJobWorkerHost,
   createRoutineRetryNoticeReconciler,
@@ -35,6 +36,7 @@ import {
   GraphileJobPublisher,
   GraphileJobWorkerHost,
 } from "./wakeup.js";
+import type { JobHelpers } from "graphile-worker";
 
 function handlers(): BackgroundJobHandlers {
   return {
@@ -325,6 +327,8 @@ describe("reserved Graphile workloads", () => {
     expect(Object.keys(configurations[2].taskList)).not.toContain("run.continue");
     expect(Object.keys(configurations[2].taskList)).not.toContain("run.interactive");
     expect(Object.keys(configurations[2].taskList)).toContain("computer.sleep");
+    expect(Object.keys(configurations[2].taskList)).toContain("routine.wakeup");
+    expect(Object.keys(configurations[0].taskList)).not.toContain("routine.wakeup");
     await host.stop();
     for (const { runner } of runners) expect(runner.stop).toHaveBeenCalled();
   });
@@ -371,6 +375,84 @@ describe("reserved Graphile workloads", () => {
         { runId: "legacy-chat" },
         { onRunStarted: expect.any(Function) },
       );
+    } finally {
+      await host.stop();
+    }
+  });
+});
+
+describe("GraphileJobWorkerHost task identifier guard", () => {
+  afterEach(() => run.mockReset());
+
+  function poolIdentifying(identifier: string): Pool {
+    return {
+      query: vi.fn(async (sql: string) => {
+        if (sql.includes("_private_tasks")) return { rows: [{ identifier }] };
+        return { rows: [] };
+      }),
+    } as unknown as Pool;
+  }
+
+  it("never dispatches run.continue when the database row is routine.wakeup", async () => {
+    run.mockResolvedValueOnce(mockRunner().runner);
+    const host = new GraphileJobWorkerHost(poolIdentifying("routine.wakeup"), {
+      workload: "interactive",
+    });
+    const target = handlers();
+    try {
+      await host.start(target);
+      const dispatch = run.mock.calls[0]![0].taskList["run.interactive"];
+      const helpers = { job: { task_id: 1, id: "55" } } as JobHelpers;
+      await expect(
+        dispatch(
+          wrapJobPayload({ routineId: "routine-1", scheduledFor: new Date().toISOString() }),
+          helpers,
+        ),
+      ).rejects.toBeInstanceOf(StaleGraphileTaskMappingError);
+      expect(target["run.continue"]).not.toHaveBeenCalled();
+    } finally {
+      await host.stop();
+    }
+  });
+
+  it("restarts the runner after a stale task_id mapping is detected", async () => {
+    run.mockResolvedValueOnce(mockRunner().runner).mockResolvedValueOnce(mockRunner().runner);
+    const host = new GraphileJobWorkerHost(poolIdentifying("routine.wakeup"), {
+      workload: "interactive",
+    });
+    try {
+      await host.start(handlers());
+      const dispatch = run.mock.calls[0]![0].taskList["run.interactive"];
+      const helpers = { job: { task_id: 1, id: "55" } } as JobHelpers;
+      await expect(dispatch(wrapJobPayload({ runId: "chat" }), helpers)).rejects.toBeInstanceOf(
+        StaleGraphileTaskMappingError,
+      );
+      await vi.waitFor(() => expect(run).toHaveBeenCalledTimes(2), { timeout: 2_000 });
+      await host.stop();
+    } finally {
+      await host.stop();
+    }
+  });
+
+  it("dispatches routine.wakeup when the database identifier matches the maintenance slot", async () => {
+    run.mockResolvedValueOnce(mockRunner().runner);
+    const host = new GraphileJobWorkerHost(poolIdentifying("routine.wakeup"), {
+      workload: "maintenance",
+    });
+    const scheduled = "2030-01-01T00:00:00.000Z";
+    const target = handlers();
+    try {
+      await host.start(target);
+      const dispatch = run.mock.calls[0]![0].taskList["routine.wakeup"];
+      const helpers = { job: { task_id: 2, id: "57" } } as JobHelpers;
+      await dispatch(
+        wrapJobPayload({ routineId: "routine-1", scheduledFor: scheduled }),
+        helpers,
+      );
+      expect(target["routine.wakeup"]).toHaveBeenCalledWith({
+        routineId: "routine-1",
+        scheduledFor: scheduled,
+      });
     } finally {
       await host.stop();
     }

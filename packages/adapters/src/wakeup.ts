@@ -10,15 +10,20 @@ import { dispatchBackgroundJob } from "@rakazo/adapter-kit";
 import type { PrismaClient } from "@rakazo/db";
 import { isTooManyDatabaseConnections, runAsSystem } from "@rakazo/db";
 import { getLogger, runCorrelatedJob, unwrapJobPayload, wrapJobPayload } from "@rakazo/logging";
-import type { Runner, WorkerUtils } from "graphile-worker";
+import type { JobHelpers, Runner, WorkerUtils } from "graphile-worker";
 import { makeWorkerUtils, run } from "graphile-worker";
 import type { Pool } from "pg";
+import {
+  assertGraphileJobDispatch,
+  INTERACTIVE_RUN_GRAPHILE_TASK,
+  StaleGraphileTaskMappingError,
+} from "./graphile-task-guard.js";
 import { recordHistoryCompactAttemptsExhausted } from "./history-compaction.js";
 import { RunExecutionHost } from "./run-execution.js";
 
 // Adapter-local task name: the shared job contract remains run.continue. Older
 // publishers can keep publishing it while a new worker drains the legacy queue.
-const INTERACTIVE_RUN_TASK = "run.interactive";
+const INTERACTIVE_RUN_TASK = INTERACTIVE_RUN_GRAPHILE_TASK;
 type RunLookup = Pick<PrismaClient, "run">;
 type Workload = "interactive" | "background" | "maintenance";
 
@@ -182,6 +187,7 @@ export class GraphileJobWorkerHost implements JobWorkerHost {
   private superviseTask: Promise<void> | undefined;
   private wakeSleep: (() => void) | undefined;
   private readonly executions = new RunExecutionHost();
+  private refreshingRunner: Promise<void> | undefined;
 
   constructor(
     private readonly pgPool: Pool,
@@ -213,6 +219,7 @@ export class GraphileJobWorkerHost implements JobWorkerHost {
     this.wakeSleep?.();
     const draining = this.executions.stop();
     try {
+      await this.refreshingRunner?.catch(() => undefined);
       await this.runner?.stop();
     } finally {
       // The queue has stopped accepting deliveries. Handed-off runs still own
@@ -235,21 +242,40 @@ export class GraphileJobWorkerHost implements JobWorkerHost {
           if (this.options.workload) return name === "run.continue";
           return true;
         })
-        .map((name) => [
-          this.options.workload === "interactive" ? INTERACTIVE_RUN_TASK : name,
-          async (payload: unknown) => {
-            const unpacked = unwrapJobPayload(payload);
-            const execute = (execution?: BackgroundJobExecution) =>
-              runCorrelatedJob({
-                name,
-                payload: unpacked.payload,
-                correlation: unpacked.correlation,
-                run: () => dispatchJob(handlers, name, unpacked.payload, execution),
-              });
-            if (name === "run.continue") await this.executions.execute(execute);
-            else await execute();
-          },
-        ]),
+        .map((name) => {
+          const slotIdentifier =
+            this.options.workload === "interactive" ? INTERACTIVE_RUN_TASK : name;
+          return [
+            slotIdentifier,
+            async (payload: unknown, helpers?: JobHelpers) => {
+              if (helpers?.job.task_id != null) {
+                try {
+                  await assertGraphileJobDispatch(this.pgPool, {
+                    taskId: helpers.job.task_id,
+                    slotIdentifier,
+                    handlerName: name,
+                    payload,
+                  });
+                } catch (error) {
+                  if (error instanceof StaleGraphileTaskMappingError) {
+                    this.refreshRunnerForStaleTaskCache();
+                  }
+                  throw error;
+                }
+              }
+              const unpacked = unwrapJobPayload(payload);
+              const execute = (execution?: BackgroundJobExecution) =>
+                runCorrelatedJob({
+                  name,
+                  payload: unpacked.payload,
+                  correlation: unpacked.correlation,
+                  run: () => dispatchJob(handlers, name, unpacked.payload, execution),
+                });
+              if (name === "run.continue") await this.executions.execute(execute);
+              else await execute();
+            },
+          ];
+        }),
     );
     if (!this.options.workload) taskList[INTERACTIVE_RUN_TASK] = taskList["run.continue"]!;
     const runner = await run({
@@ -259,6 +285,10 @@ export class GraphileJobWorkerHost implements JobWorkerHost {
       noHandleSignals: this.options.noHandleSignals,
       taskList,
     });
+    if (!runner?.events) {
+      if (!this.stopping) throw new Error("Graphile worker failed to start");
+      return;
+    }
     runner.events.on("job:failed", ({ job, error }) => {
       recordHistoryCompactAttemptsExhausted(job, error);
     });
@@ -267,6 +297,23 @@ export class GraphileJobWorkerHost implements JobWorkerHost {
       return;
     }
     this.runner = runner;
+  }
+
+  private refreshRunnerForStaleTaskCache(): void {
+    if (this.stopping || this.refreshingRunner) return;
+    this.refreshingRunner = (async () => {
+      try {
+        const runner = this.runner;
+        if (!runner) return;
+        this.runner = undefined;
+        await runner.stop().catch(() => undefined);
+        if (!this.stopping && this.handlers) await this.launchRunner();
+      } catch (error) {
+        getLogger().error("graphile runner refresh after stale task mapping", error);
+      } finally {
+        this.refreshingRunner = undefined;
+      }
+    })();
   }
 
   private delay(ms: number): Promise<void> {
@@ -423,6 +470,9 @@ const DEAD_JOB_PRUNE_MAX_BATCHES = 50;
  * Graphile's `cleanup` task deletes every exhausted job regardless of age or task, and
  * `completeJobs` deletes by id without rechecking, so a keyed job replaced back to life between
  * a select and the delete would go with it. This deletes in one statement that rechecks.
+ *
+ * Pruning leaves task identifiers unreferenced. Never run Graphile `GC_TASK_IDENTIFIERS` against
+ * live workers; `createGraphileTaskIdentifierRegistrar` keeps every app task row present instead.
  */
 export function createDeadJobPruner(
   pool: Pick<Pool, "query">,

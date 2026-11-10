@@ -1,8 +1,13 @@
 import type { BackgroundJob, BackgroundJobHandlers } from "@rakazo/adapter-kit";
+import { routineWakeupJob } from "@rakazo/adapter-kit";
 import type { PrismaClient } from "@rakazo/db";
 import { createPool, currentDbContext, runAsTenant } from "@rakazo/db";
 import { Pool } from "pg";
 import { afterEach, describe, expect, it, vi } from "vitest";
+import {
+  allGraphileTaskIdentifiers,
+  createGraphileTaskIdentifierRegistrar,
+} from "./graphile-task-guard.js";
 import {
   createDeadJobPruner,
   createReservedGraphileJobWorkerHost,
@@ -642,6 +647,47 @@ describePostgres("Graphile background jobs (PostgreSQL contract)", () => {
       await testPool().query("delete from graphile_worker._private_jobs where key = any($1)", [
         keys,
       ]);
+      await publisher.close();
+    }
+  });
+
+  it("pins task identifiers so dead-job pruning cannot invite GC_TASK_IDENTIFIERS to recycle ids", async () => {
+    await createGraphileTaskIdentifierRegistrar(testPool())();
+    const { rows } = await testPool().query<{ identifier: string }>(
+      `select identifier from graphile_worker._private_tasks
+       where identifier = any($1::text[])
+       order by identifier`,
+      [allGraphileTaskIdentifiers()],
+    );
+    expect(rows.map((row) => row.identifier)).toEqual([...allGraphileTaskIdentifiers()].sort());
+  });
+
+  it("delivers routine.wakeup through the maintenance runner without touching run.continue", async () => {
+    const publisher = new GraphileJobPublisher(testPool());
+    const host = createReservedGraphileJobWorkerHost(testPool(), {
+      concurrency: 1,
+      pollInterval: 25,
+    });
+    const scheduled = new Date();
+    let awakened: { routineId: string; scheduledFor: string } | undefined;
+    const target = handlers({
+      "routine.wakeup": async (payload) => {
+        awakened = payload;
+      },
+    });
+    const key = `contract:routine-wakeup:${Date.now()}`;
+    try {
+      await host.start(target);
+      await publisher.enqueue({ ...routineWakeupJob("routine-contract", scheduled), replaceKey: key });
+      await waitFor(() => expect(awakened).toBeDefined(), 15_000);
+      expect(awakened).toEqual({
+        routineId: "routine-contract",
+        scheduledFor: scheduled.toISOString(),
+      });
+      expect(target["run.continue"]).not.toHaveBeenCalled();
+    } finally {
+      await host.stop();
+      await publisher.cancel(key).catch(() => undefined);
       await publisher.close();
     }
   });
