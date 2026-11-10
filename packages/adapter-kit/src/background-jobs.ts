@@ -38,6 +38,11 @@ const payloadSchemas = {
   }),
 } satisfies { [Name in BackgroundJobName]: z.ZodType<BackgroundJobPayloads[Name]> };
 
+/** Durable Graphile task identifiers for every background job handler. */
+export const BACKGROUND_JOB_GRAPHILE_IDENTIFIERS = Object.keys(
+  payloadSchemas,
+) as BackgroundJobName[];
+
 export function parseBackgroundJob(name: string, payload: unknown): BackgroundJob {
   if (!(name in payloadSchemas)) throw new Error(`Unknown background job: ${name}`);
   const typedName = name as BackgroundJobName;

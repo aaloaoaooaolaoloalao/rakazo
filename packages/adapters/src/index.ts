@@ -207,6 +207,7 @@ export * from "./user-device-emulator.js";
 export * from "./user-device-gateway.js";
 export * from "./user-device-protocol.js";
 export * from "./voice-factory.js";
+export * from "./graphile-task-guard.js";
 export * from "./wakeup.js";
 export * from "./web-limits.js";
 export * from "./web-provider-factory.js";
