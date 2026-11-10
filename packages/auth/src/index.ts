@@ -39,6 +39,8 @@ import { credentialEmailRateLimit } from "./credential-email-limit.js";
 import type { EmailLocaleOf } from "./email.js";
 import { emailLocale, passwordResetEmail, signInCodeEmail, verificationEmail } from "./email.js";
 import { hasRecentIdentityConfirmation, identityConfirmation } from "./identity-confirmation.js";
+import type { AppleSignInConfig } from "./apple.js";
+import { appleSocialProviderOptions } from "./apple.js";
 import type { OidcConfig } from "./oidc.js";
 import { isCurrentOidcAccount, oidcDiscovery } from "./oidc.js";
 import { passkeyRelyingParty } from "./passkey.js";
@@ -53,6 +55,8 @@ export {
 } from "./email.js";
 export type { HomeDeletionReason } from "./home-deletion-email.js";
 export { homeDeletionEmail } from "./home-deletion-email.js";
+export type { AppleSignInConfig } from "./apple.js";
+export { appleAuthFromEnv } from "./apple.js";
 export type { OidcConfig } from "./oidc.js";
 export { passkeyRelyingParty } from "./passkey.js";
 export {
@@ -70,6 +74,7 @@ export interface AuthEnv {
   /** Opt-in: rejects new passwords found in Have I Been Pwned. Calls an outside service. */
   breachedPasswordCheck?: boolean;
   oidc?: OidcConfig;
+  apple?: AppleSignInConfig;
   secret: string;
   baseURL: string;
   webOrigin: string;
@@ -160,8 +165,8 @@ export function authRateLimitOptions(nodeEnv = process.env.NODE_ENV) {
 }
 
 export function createAuth(prisma: PrismaClient, env: AuthEnv) {
-  if (env.passwordAuth === false && !env.oidc)
-    throw new Error("Password auth requires OIDC when disabled");
+  if (env.passwordAuth === false && !env.oidc && !env.apple)
+    throw new Error("Password auth requires OIDC or Sign in with Apple when disabled");
   // A failed lookup still sends the email, in the asking browser's language.
   const emailLocaleOf: EmailLocaleOf = async (account, headers) => {
     try {
@@ -225,6 +230,9 @@ export function createAuth(prisma: PrismaClient, env: AuthEnv) {
     secret: env.secret,
     baseURL: env.baseURL,
     trustedOrigins: [...buildTrustedOrigins(env), "rakazo://"],
+    ...(env.apple
+      ? { socialProviders: { apple: appleSocialProviderOptions(env.apple) } }
+      : {}),
     account: {
       accountLinking: { enabled: true, disableImplicitLinking: true, trustedProviders: [] },
       encryptOAuthTokens: true,
@@ -291,10 +299,16 @@ export function createAuth(prisma: PrismaClient, env: AuthEnv) {
     },
     user: {
       validateUserInfo: async ({ user, source }, ctx) => {
-        if (source.method !== "oauth" || source.oauth?.providerId !== "oidc") return;
-        const expectedUser = (await getOAuthState())?.serverContext?.reauthUserId;
-        if (typeof expectedUser === "string" && user.id !== expectedUser)
-          return { error: "REAUTHENTICATION_REQUIRED" };
+        if (source.method !== "oauth") return;
+        const providerId = source.oauth?.providerId;
+        const oidcSignIn = providerId === "oidc" && env.oidc;
+        const appleSignIn = providerId === "apple" && env.apple;
+        if (!oidcSignIn && !appleSignIn) return;
+        if (oidcSignIn) {
+          const expectedUser = (await getOAuthState())?.serverContext?.reauthUserId;
+          if (typeof expectedUser === "string" && user.id !== expectedUser)
+            return { error: "REAUTHENTICATION_REQUIRED" };
+        }
         const verified = user.emailVerified === true;
         const email = String(user.email ?? "").toLowerCase();
         if (isMessagingEmail(email)) return { error: "EMAIL_NOT_AVAILABLE" };
@@ -315,13 +329,14 @@ export function createAuth(prisma: PrismaClient, env: AuthEnv) {
         if (source.action === "create-user") {
           const policy = await admission();
           if (!policy.enabled) return { error: "REGISTRATION_CLOSED" };
-          if (!env.oidc?.allowSignupBypass && !emailAllowed(email, policy.allowlist))
+          const allowSignupBypass = oidcSignIn && env.oidc?.allowSignupBypass;
+          if (!allowSignupBypass && !emailAllowed(email, policy.allowlist))
             return { error: "EMAIL_NOT_ALLOWED" };
-          if (!env.oidc?.allowSignupBypass && policy.allowlist.length > 0 && !verified)
+          if (!allowSignupBypass && policy.allowlist.length > 0 && !verified)
             return { error: "EMAIL_VERIFICATION_REQUIRED" };
           return;
         }
-        if (source.action === "sign-in" && user.id) {
+        if (source.action === "sign-in" && user.id && oidcSignIn) {
           const collision = await ctx.context.internalAdapter.findUserByEmail(email);
           if (collision && collision.user.id !== user.id) return { error: "account_not_linked" };
           const stored = await ctx.context.internalAdapter.findUserById(user.id);

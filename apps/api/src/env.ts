@@ -15,7 +15,8 @@ import {
   secretStoreOptionsFromEnv,
   telegramBotsFromEnv,
 } from "@rakazo/adapters";
-import type { OidcConfig } from "@rakazo/auth";
+import type { AppleSignInConfig, OidcConfig } from "@rakazo/auth";
+import { appleAuthFromEnv } from "@rakazo/auth";
 import type { MinimumClientBuilds, NavLink } from "@rakazo/contracts";
 import { parseMinimumClientBuilds, parseNavLinks } from "@rakazo/contracts";
 import { parseCrispWebsiteId } from "@rakazo/contracts/content-security-policy";
@@ -41,6 +42,7 @@ export interface AppEnv {
   /** Opt-in Have I Been Pwned check for new passwords. Default off: it calls an outside service. */
   breachedPasswordCheck?: boolean;
   oidc?: OidcConfig;
+  apple?: AppleSignInConfig;
   nodeEnv: string;
   desktopStackToken?: string;
   databaseUrl: string;
@@ -206,9 +208,10 @@ export function loadEnv(source: NodeJS.ProcessEnv = process.env): AppEnv {
     if (value && !["true", "false"].includes(value))
       throw new Error(`${key} must be true or false`);
   }
+  const apple = appleAuthFromEnv(source);
   const passwordAuth = source.AUTH_PASSWORD_ENABLED !== "false";
-  if (!passwordAuth && !issuer)
-    throw new Error("AUTH_PASSWORD_ENABLED=false requires OIDC configuration");
+  if (!passwordAuth && !issuer && !apple)
+    throw new Error("AUTH_PASSWORD_ENABLED=false requires OIDC or Sign in with Apple configuration");
   const oidc =
     issuer && clientId && clientSecret
       ? {
@@ -231,6 +234,7 @@ export function loadEnv(source: NodeJS.ProcessEnv = process.env): AppEnv {
     passwordAuth,
     breachedPasswordCheck: source.AUTH_BREACHED_PASSWORD_CHECK_ENABLED === "true",
     oidc,
+    apple,
     nodeEnv: source.NODE_ENV ?? "",
     databaseUrl: required(source, "DATABASE_URL"),
     realtimeDatabaseUrl: source.REALTIME_DATABASE_URL ?? required(source, "DATABASE_URL"),
