@@ -234,7 +234,7 @@ export function createAuth(prisma: PrismaClient, env: AuthEnv) {
       ? { socialProviders: { apple: appleSocialProviderOptions(env.apple) } }
       : {}),
     account: {
-      accountLinking: { enabled: true, disableImplicitLinking: true, trustedProviders: [] },
+      accountLinking: { enabled: true, disableImplicitLinking: false, trustedProviders: ["apple"], requireLocalEmailVerified: false },
       encryptOAuthTokens: true,
     },
     // Store only a hash of identifiers that carry an emailed token. Other
