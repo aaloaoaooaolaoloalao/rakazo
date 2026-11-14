@@ -344,6 +344,22 @@ describe("OIDC callbacks", () => {
       expect(rows("account")[0]?.providerId).toBe("credential");
     },
   );
+  it("never links SSO implicitly, even into a verified local account", async () => {
+    setup();
+    await request("/sign-up/email", {
+      email: "sso@example.test",
+      password: "test-password-123",
+      name: "Local",
+    });
+    rows("user")[0]!.emailVerified = true;
+    const sessions = rows("session").length;
+    cookies = "";
+    const response = await signIn();
+    expect(response.headers.get("location")).toContain("error=account_not_linked");
+    expect(rows("user")).toHaveLength(1);
+    expect(rows("account").map((account) => account.providerId)).toEqual(["credential"]);
+    expect(rows("session")).toHaveLength(sessions);
+  });
   it("stores provider tokens encrypted and still reads them", async () => {
     setup();
     await signIn();

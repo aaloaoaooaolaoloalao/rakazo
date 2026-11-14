@@ -98,6 +98,10 @@ const INDIRECT = {
     "APNS_SANDBOX_KEY_ID",
     "APNS_SANDBOX_KEY_P8",
     "APNS_SANDBOX_KEY_PATH",
+    // auth/apple.ts passes these names into readAppleKeyMaterial as string literals.
+    "APPLE_KEY_ID",
+    "APPLE_KEY_P8",
+    "APPLE_KEY_PATH",
     // core/secrets-guard.ts resolves these by name.
     "SANDBOX_SUPERVISOR_TOKEN",
     // pi-local-provider.ts reads these through a small helper.

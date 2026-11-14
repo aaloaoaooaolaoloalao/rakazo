@@ -34,6 +34,8 @@ import {
   sessionForAuthHook,
   signedBearer,
 } from "./account-security.js";
+import type { AppleSignInConfig } from "./apple.js";
+import { appleEmailVerified, appleSocialProviderOptions } from "./apple.js";
 import { breachedPasswordCheck } from "./breached-password.js";
 import { credentialEmailRateLimit } from "./credential-email-limit.js";
 import type { EmailLocaleOf } from "./email.js";
@@ -45,6 +47,8 @@ import { passkeyRelyingParty } from "./passkey.js";
 import type { TokenKey } from "./token-storage.js";
 import { encryptStoredOAuthTokens, openIdToken, sealIdToken } from "./token-storage.js";
 
+export type { AppleSignInConfig } from "./apple.js";
+export { appleAuthFromEnv } from "./apple.js";
 export {
   emailLocale,
   passwordResetEmail,
@@ -70,6 +74,7 @@ export interface AuthEnv {
   /** Opt-in: rejects new passwords found in Have I Been Pwned. Calls an outside service. */
   breachedPasswordCheck?: boolean;
   oidc?: OidcConfig;
+  apple?: AppleSignInConfig;
   secret: string;
   baseURL: string;
   webOrigin: string;
@@ -98,6 +103,9 @@ export interface AuthEnv {
 }
 
 type AuthSession = { id: string; userId: string };
+type ValidateUserInfoArgs = Parameters<
+  NonNullable<NonNullable<BetterAuthOptions["user"]>["validateUserInfo"]>
+>;
 
 const SEND_SIGN_IN_CODE_PATH = "/email-otp/send-verification-otp";
 const CODE_SIGN_IN_PATH = "/sign-in/email-otp";
@@ -160,8 +168,8 @@ export function authRateLimitOptions(nodeEnv = process.env.NODE_ENV) {
 }
 
 export function createAuth(prisma: PrismaClient, env: AuthEnv) {
-  if (env.passwordAuth === false && !env.oidc)
-    throw new Error("Password auth requires OIDC when disabled");
+  if (env.passwordAuth === false && !env.oidc && !env.apple)
+    throw new Error("Password auth requires OIDC or Sign in with Apple when disabled");
   // A failed lookup still sends the email, in the asking browser's language.
   const emailLocaleOf: EmailLocaleOf = async (account, headers) => {
     try {
@@ -209,6 +217,20 @@ export function createAuth(prisma: PrismaClient, env: AuthEnv) {
       await bootstrapUserSpace(prisma, { id: userId }, env);
       return true;
     });
+  /**
+   * Anyone can register an address, so sign-in links into an existing account only from
+   * Apple, and only when both that account and Apple's ID token verified the same email.
+   */
+  const implicitAppleLinkAllowed = async (...[{ user, source }, ctx]: ValidateUserInfoArgs) => {
+    if (!env.apple || source.method !== "oauth" || source.oauth?.providerId !== "apple")
+      return false;
+    if (user.emailVerified !== true || !appleEmailVerified(source.oauth.profile)) return false;
+    const target = await ctx.context.internalAdapter.findUserById(String(user.id));
+    return Boolean(
+      target?.emailVerified &&
+        target.email.toLowerCase() === String(user.email ?? "").toLowerCase(),
+    );
+  };
   // SSO-only deployments keep every email credential closed, codes included.
   const emailCodeSignIn = Boolean(env.email) && env.passwordAuth !== false;
   // SSO-only deployments keep the identity provider as the only way in.
@@ -225,8 +247,16 @@ export function createAuth(prisma: PrismaClient, env: AuthEnv) {
     secret: env.secret,
     baseURL: env.baseURL,
     trustedOrigins: [...buildTrustedOrigins(env), "rakazo://"],
+    ...(env.apple ? { socialProviders: { apple: appleSocialProviderOptions(env.apple) } } : {}),
     account: {
-      accountLinking: { enabled: true, disableImplicitLinking: true, trustedProviders: [] },
+      // Implicit linking stays on only for Apple; validateUserInfo refuses it for every other
+      // provider. No provider is trusted, so a link always needs a verified provider email.
+      accountLinking: {
+        enabled: true,
+        disableImplicitLinking: false,
+        trustedProviders: [],
+        requireLocalEmailVerified: true,
+      },
       encryptOAuthTokens: true,
     },
     // Store only a hash of identifiers that carry an emailed token. Other
@@ -291,10 +321,24 @@ export function createAuth(prisma: PrismaClient, env: AuthEnv) {
     },
     user: {
       validateUserInfo: async ({ user, source }, ctx) => {
-        if (source.method !== "oauth" || source.oauth?.providerId !== "oidc") return;
-        const expectedUser = (await getOAuthState())?.serverContext?.reauthUserId;
-        if (typeof expectedUser === "string" && user.id !== expectedUser)
-          return { error: "REAUTHENTICATION_REQUIRED" };
+        // A sign-in that matched an existing account by email alone. Only an explicit link
+        // carries a signed link state, so anything else here is implicit linking.
+        if (
+          source.action === "link-account" &&
+          !(await getOAuthState())?.link &&
+          !(await implicitAppleLinkAllowed({ user, source }, ctx))
+        )
+          return { error: "account_not_linked" };
+        if (source.method !== "oauth") return;
+        const providerId = source.oauth?.providerId;
+        const oidcSignIn = providerId === "oidc" && env.oidc;
+        const appleSignIn = providerId === "apple" && env.apple;
+        if (!oidcSignIn && !appleSignIn) return;
+        if (oidcSignIn) {
+          const expectedUser = (await getOAuthState())?.serverContext?.reauthUserId;
+          if (typeof expectedUser === "string" && user.id !== expectedUser)
+            return { error: "REAUTHENTICATION_REQUIRED" };
+        }
         const verified = user.emailVerified === true;
         const email = String(user.email ?? "").toLowerCase();
         if (isMessagingEmail(email)) return { error: "EMAIL_NOT_AVAILABLE" };
@@ -315,13 +359,14 @@ export function createAuth(prisma: PrismaClient, env: AuthEnv) {
         if (source.action === "create-user") {
           const policy = await admission();
           if (!policy.enabled) return { error: "REGISTRATION_CLOSED" };
-          if (!env.oidc?.allowSignupBypass && !emailAllowed(email, policy.allowlist))
+          const allowSignupBypass = oidcSignIn && env.oidc?.allowSignupBypass;
+          if (!allowSignupBypass && !emailAllowed(email, policy.allowlist))
             return { error: "EMAIL_NOT_ALLOWED" };
-          if (!env.oidc?.allowSignupBypass && policy.allowlist.length > 0 && !verified)
+          if (!allowSignupBypass && policy.allowlist.length > 0 && !verified)
             return { error: "EMAIL_VERIFICATION_REQUIRED" };
           return;
         }
-        if (source.action === "sign-in" && user.id) {
+        if (source.action === "sign-in" && user.id && oidcSignIn) {
           const collision = await ctx.context.internalAdapter.findUserByEmail(email);
           if (collision && collision.user.id !== user.id) return { error: "account_not_linked" };
           const stored = await ctx.context.internalAdapter.findUserById(user.id);

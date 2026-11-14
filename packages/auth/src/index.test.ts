@@ -1,4 +1,4 @@
-import { createHmac } from "node:crypto";
+import { createHmac, generateKeyPairSync } from "node:crypto";
 import { describe, expect, it, vi } from "vitest";
 import {
   authRateLimitOptions,
@@ -276,5 +276,45 @@ describe("bearer sessions", () => {
     const { auth, lookups } = authWithSessionLookups();
     await auth.api.getSession({ headers: new Headers({ authorization: `Bearer ${bearer}` }) });
     expect(JSON.stringify(lookups)).toContain(token);
+  });
+});
+
+describe("Sign in with Apple", () => {
+  const { privateKey } = generateKeyPairSync("ec", { namedCurve: "prime256v1" });
+  const keyPem = privateKey.export({ type: "pkcs8", format: "pem" }).toString();
+  const baseEnv = {
+    secret: "offline-auth-secret-at-least-32-characters",
+    baseURL: "https://api.example.test",
+    webOrigin: "https://app.example.test",
+    signupsEnabled: "true",
+    signupAllowlist: "",
+    apple: {
+      clientId: "com.example.sparkai",
+      appBundleIdentifier: "com.example.sparkai",
+      teamId: "TEAM000000",
+      keyId: "KEY000000",
+      key: keyPem,
+    },
+  };
+
+  it("registers the apple social provider when configured", async () => {
+    const auth = createAuth({} as never, baseEnv);
+    const context = await auth.$context;
+    expect(context.socialProviders.map((provider) => provider.id)).toContain("apple");
+  });
+
+  it("rejects apple sign-in without a valid id token", async () => {
+    const auth = createAuth({} as never, baseEnv);
+    const response = await auth.handler(
+      new Request("https://api.example.test/api/auth/sign-in/social", {
+        method: "POST",
+        headers: { "content-type": "application/json", origin: "rakazo://" },
+        body: JSON.stringify({
+          provider: "apple",
+          idToken: { token: "not-a-jwt", nonce: "test-nonce" },
+        }),
+      }),
+    );
+    expect(response.status).toBe(401);
   });
 });

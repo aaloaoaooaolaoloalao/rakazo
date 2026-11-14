@@ -41,6 +41,11 @@ Set in `docker-compose.override.yml` on the server (not all are in `docker-compo
 | `AUTO_PROVISION_DEFAULT_BOT_NAME` | Default bot display name (Hebrew) |
 | `AUTO_PROVISION_MAX_COMPUTERS_PER_USER` | Cap for auto-provision (min with sandbox cap) |
 | `SANDBOX_MAX_COMPUTERS_PER_USER` | Hard cap on new computer rows per user |
+| `APPLE_CLIENT_ID` | iOS bundle id used as the Apple OAuth client id |
+| `APPLE_APP_BUNDLE_IDENTIFIER` | Native app bundle id for id-token audience (defaults to `APPLE_CLIENT_ID`) |
+| `APPLE_TEAM_ID` | Apple Developer team id |
+| `APPLE_KEY_ID` | Sign in with Apple key id |
+| `APPLE_KEY_PATH` / `APPLE_KEY_P8` | `.p8` private key path or inline PEM (path preferred in production) |
 
 ## Rollback scripts (on server)
 
@@ -59,7 +64,7 @@ Copies without secrets live in this repo under `deploy/`.
 
 - **GHCR push** needs `write:packages` (or CI) to publish images; production uses **local `docker build`** + `pull_policy: never`.
 - Map **`DEFAULT_MODEL_*`** in `docker-compose.images.yml` for cleaner defaults.
-- **Sign in with Apple**, **push notifications**, **production domain** (replace sslip.io).
+- **push notifications**, **production domain** (replace sslip.io). Sign in with Apple is wired in Better Auth; set the `APPLE_*` env vars on **api** and redeploy after merging.
 - iOS client: separate repo [sparkai-ios](https://github.com/aaloaoaooaolaoloalao/sparkai-ios).
 
 ## vs upstream
