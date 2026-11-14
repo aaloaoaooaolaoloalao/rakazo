@@ -1,4 +1,4 @@
-import { createSign, createPrivateKey } from "node:crypto";
+import { createPrivateKey, createSign } from "node:crypto";
 import { readFileSync } from "node:fs";
 
 /** Native Sign in with Apple (Better Auth `socialProviders.apple`). */
@@ -45,7 +45,9 @@ function readAppleKeyMaterial(env: NodeJS.ProcessEnv): AppleKeyMaterial | undefi
  * Reads Sign in with Apple settings. Partial configuration yields `undefined` so
  * auth can start with Apple sign-in disabled (same spirit as optional OIDC).
  */
-export function appleAuthFromEnv(source: NodeJS.ProcessEnv = process.env): AppleSignInConfig | undefined {
+export function appleAuthFromEnv(
+  source: NodeJS.ProcessEnv = process.env,
+): AppleSignInConfig | undefined {
   const clientId = source.APPLE_CLIENT_ID?.trim();
   const teamId = source.APPLE_TEAM_ID?.trim();
   const material = readAppleKeyMaterial(source);
@@ -102,9 +104,13 @@ export function resetAppleClientSecretCacheForTests() {
   secretCache = new Map();
 }
 
-export function appleSocialProviderOptions(
-  config: AppleSignInConfig,
-): () => Promise<{
+/** Apple's ID token sends `email_verified` as a boolean or as the string "true". */
+export function appleEmailVerified(claims: Record<string, unknown> | undefined): boolean {
+  const value = claims?.email_verified;
+  return value === true || value === "true";
+}
+
+export function appleSocialProviderOptions(config: AppleSignInConfig): () => Promise<{
   clientId: string;
   clientSecret: string;
   appBundleIdentifier: string;

@@ -34,19 +34,21 @@ import {
   sessionForAuthHook,
   signedBearer,
 } from "./account-security.js";
+import type { AppleSignInConfig } from "./apple.js";
+import { appleEmailVerified, appleSocialProviderOptions } from "./apple.js";
 import { breachedPasswordCheck } from "./breached-password.js";
 import { credentialEmailRateLimit } from "./credential-email-limit.js";
 import type { EmailLocaleOf } from "./email.js";
 import { emailLocale, passwordResetEmail, signInCodeEmail, verificationEmail } from "./email.js";
 import { hasRecentIdentityConfirmation, identityConfirmation } from "./identity-confirmation.js";
-import type { AppleSignInConfig } from "./apple.js";
-import { appleSocialProviderOptions } from "./apple.js";
 import type { OidcConfig } from "./oidc.js";
 import { isCurrentOidcAccount, oidcDiscovery } from "./oidc.js";
 import { passkeyRelyingParty } from "./passkey.js";
 import type { TokenKey } from "./token-storage.js";
 import { encryptStoredOAuthTokens, openIdToken, sealIdToken } from "./token-storage.js";
 
+export type { AppleSignInConfig } from "./apple.js";
+export { appleAuthFromEnv } from "./apple.js";
 export {
   emailLocale,
   passwordResetEmail,
@@ -55,8 +57,6 @@ export {
 } from "./email.js";
 export type { HomeDeletionReason } from "./home-deletion-email.js";
 export { homeDeletionEmail } from "./home-deletion-email.js";
-export type { AppleSignInConfig } from "./apple.js";
-export { appleAuthFromEnv } from "./apple.js";
 export type { OidcConfig } from "./oidc.js";
 export { passkeyRelyingParty } from "./passkey.js";
 export {
@@ -103,6 +103,9 @@ export interface AuthEnv {
 }
 
 type AuthSession = { id: string; userId: string };
+type ValidateUserInfoArgs = Parameters<
+  NonNullable<NonNullable<BetterAuthOptions["user"]>["validateUserInfo"]>
+>;
 
 const SEND_SIGN_IN_CODE_PATH = "/email-otp/send-verification-otp";
 const CODE_SIGN_IN_PATH = "/sign-in/email-otp";
@@ -214,6 +217,20 @@ export function createAuth(prisma: PrismaClient, env: AuthEnv) {
       await bootstrapUserSpace(prisma, { id: userId }, env);
       return true;
     });
+  /**
+   * Anyone can register an address, so sign-in links into an existing account only from
+   * Apple, and only when both that account and Apple's ID token verified the same email.
+   */
+  const implicitAppleLinkAllowed = async (...[{ user, source }, ctx]: ValidateUserInfoArgs) => {
+    if (!env.apple || source.method !== "oauth" || source.oauth?.providerId !== "apple")
+      return false;
+    if (user.emailVerified !== true || !appleEmailVerified(source.oauth.profile)) return false;
+    const target = await ctx.context.internalAdapter.findUserById(String(user.id));
+    return Boolean(
+      target?.emailVerified &&
+        target.email.toLowerCase() === String(user.email ?? "").toLowerCase(),
+    );
+  };
   // SSO-only deployments keep every email credential closed, codes included.
   const emailCodeSignIn = Boolean(env.email) && env.passwordAuth !== false;
   // SSO-only deployments keep the identity provider as the only way in.
@@ -230,11 +247,16 @@ export function createAuth(prisma: PrismaClient, env: AuthEnv) {
     secret: env.secret,
     baseURL: env.baseURL,
     trustedOrigins: [...buildTrustedOrigins(env), "rakazo://"],
-    ...(env.apple
-      ? { socialProviders: { apple: appleSocialProviderOptions(env.apple) } }
-      : {}),
+    ...(env.apple ? { socialProviders: { apple: appleSocialProviderOptions(env.apple) } } : {}),
     account: {
-      accountLinking: { enabled: true, disableImplicitLinking: false, trustedProviders: ["apple"], requireLocalEmailVerified: false },
+      // Implicit linking stays on only for Apple; validateUserInfo refuses it for every other
+      // provider. No provider is trusted, so a link always needs a verified provider email.
+      accountLinking: {
+        enabled: true,
+        disableImplicitLinking: false,
+        trustedProviders: [],
+        requireLocalEmailVerified: true,
+      },
       encryptOAuthTokens: true,
     },
     // Store only a hash of identifiers that carry an emailed token. Other
@@ -299,6 +321,14 @@ export function createAuth(prisma: PrismaClient, env: AuthEnv) {
     },
     user: {
       validateUserInfo: async ({ user, source }, ctx) => {
+        // A sign-in that matched an existing account by email alone. Only an explicit link
+        // carries a signed link state, so anything else here is implicit linking.
+        if (
+          source.action === "link-account" &&
+          !(await getOAuthState())?.link &&
+          !(await implicitAppleLinkAllowed({ user, source }, ctx))
+        )
+          return { error: "account_not_linked" };
         if (source.method !== "oauth") return;
         const providerId = source.oauth?.providerId;
         const oidcSignIn = providerId === "oidc" && env.oidc;
