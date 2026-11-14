@@ -157,6 +157,7 @@ import { deleteAccountContent } from "./account-deletion.js";
 import { mountAccountExportRoute } from "./account-export.js";
 import { mountAccountImportRoute } from "./account-import.js";
 import { mountAppAssociation, nativePasskeys } from "./app-association.js";
+import { appFeedbackRoutes } from "./app-feedback.js";
 import { storeInboundAttachment } from "./artifacts.js";
 import { mountAuditExportRoute } from "./audit-export.js";
 import { createBillingService } from "./billing.js";
@@ -977,6 +978,26 @@ async function buildApp(overrides: CreateAppOverrides): Promise<AppHandles> {
     }),
   );
   app.route("/", marketingEmailRoutes(prisma, env.authSecret));
+  const sessionUserId = async (request: Request) =>
+    (await auth.api.getSession({ headers: request.headers }))?.user.id;
+  for (const path of ["/api/announcements", "/api/feedback/*"]) {
+    app.use(path, async (c, next) => {
+      const limited = await limitRpc(c, prisma, await sessionUserId(c.req.raw));
+      if (limited) return limited;
+      await next();
+    });
+  }
+  app.route(
+    "/",
+    appFeedbackRoutes({
+      announcementsJson: process.env.ANNOUNCEMENTS_JSON,
+      bugReportsDir: process.env.BUG_REPORTS_DIR,
+      adminEmails: env.adminEmails,
+      email,
+      onEmailError,
+      userIdFor: sessionUserId,
+    }),
+  );
   mountApiRequestBodyLimits(app);
   mountScreenTarget(app, prisma, env.screenProxySecret);
   mountScriptAssets(app);
