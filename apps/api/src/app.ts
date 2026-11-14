@@ -64,7 +64,6 @@ import {
   deploymentModelUsageLookup,
   EmailEmulator,
   ExpoPushProvider,
-  RoutedPushProvider,
   GraphileJobPublisher,
   InMemoryJobQueue,
   InMemoryRealtimeFanout,
@@ -85,6 +84,7 @@ import {
   PrismaPushTokenStore,
   pipedreamConfigFromEnv,
   piSessionsRoot,
+  RoutedPushProvider,
   RunJobPublisher,
   RunStarter,
   reconcileCloudAgents,
@@ -113,7 +113,11 @@ import {
   PLUGIN_SUBMISSIONS_PATH,
   SERVER_BUILD_HEADER,
 } from "@rakazo/contracts";
-import { autoProvisionNewUsersEnabled, encryptionKeyWarning, signupPolicyFromEnv } from "@rakazo/core";
+import {
+  autoProvisionNewUsersEnabled,
+  encryptionKeyWarning,
+  signupPolicyFromEnv,
+} from "@rakazo/core";
 import type { Pool, PrismaClient } from "@rakazo/db";
 import {
   configureProviderTransactionPool,
@@ -153,6 +157,7 @@ import { deleteAccountContent } from "./account-deletion.js";
 import { mountAccountExportRoute } from "./account-export.js";
 import { mountAccountImportRoute } from "./account-import.js";
 import { mountAppAssociation, nativePasskeys } from "./app-association.js";
+import { appFeedbackRoutes } from "./app-feedback.js";
 import { storeInboundAttachment } from "./artifacts.js";
 import { mountAuditExportRoute } from "./audit-export.js";
 import { createBillingService } from "./billing.js";
@@ -170,7 +175,6 @@ import { configuredEmailProvider } from "./email.js";
 import type { AppEnv } from "./env.js";
 import { loadEnv } from "./env.js";
 import { healthRoutes } from "./health.js";
-import { limitRpc } from "./rpc-rate-limit.js";
 import { homeRetentionSweep } from "./home-retention.js";
 import { startHourlySweep } from "./hourly-sweep.js";
 import { trackInFlightRequests } from "./in-flight-requests.js";
@@ -189,6 +193,7 @@ import { pluginSubmissionRoutes } from "./plugin-submissions.js";
 import { sendReferralEmails } from "./referral-email.js";
 import { mountApiRequestBodyLimits, rpcBodyLimit } from "./request-body-limit.js";
 import { createRouter } from "./router.js";
+import { limitRpc } from "./rpc-rate-limit.js";
 import { mountScreenTarget } from "./screen-proxy.js";
 import { mountScriptAssets } from "./script-assets.js";
 import { createAuthResponseAudit } from "./security-audit.js";
@@ -535,8 +540,7 @@ async function buildApp(overrides: CreateAppOverrides): Promise<AppHandles> {
     accessToken: env.expoAccessToken,
     voip: await createApnsVoipProvider(env.apnsVoip),
   });
-  const notifications =
-    notificationsOverride ?? new RoutedPushProvider(expoPush, pushTokens);
+  const notifications = notificationsOverride ?? new RoutedPushProvider(expoPush, pushTokens);
   const userDeviceSecret = userDeviceForwardSecret(env.encryptionKey);
   const userDeviceHub = env.userDevicesEnabled
     ? new UserDeviceHub({ prisma, address: userDeviceInternalAddress(env.apiHost, env.port) })
@@ -591,9 +595,9 @@ async function buildApp(overrides: CreateAppOverrides): Promise<AppHandles> {
       // First, so a provider failure aborts deletion before anything is destroyed.
       await billing?.cancelForDeletedUser(userId);
       if (stack.composio) {
-        await stack.composio.purgeUserConnectedAccounts(userId).catch((error) =>
-          getLogger().error("account.delete.composio_purge_failed", error),
-        );
+        await stack.composio
+          .purgeUserConnectedAccounts(userId)
+          .catch((error) => getLogger().error("account.delete.composio_purge_failed", error));
       }
       await deleteAccountContent(
         {
@@ -975,6 +979,26 @@ async function buildApp(overrides: CreateAppOverrides): Promise<AppHandles> {
     }),
   );
   app.route("/", marketingEmailRoutes(prisma, env.authSecret));
+  const sessionUserId = async (request: Request) =>
+    (await auth.api.getSession({ headers: request.headers }))?.user.id;
+  for (const path of ["/api/announcements", "/api/feedback/*"]) {
+    app.use(path, async (c, next) => {
+      const limited = await limitRpc(c, prisma, await sessionUserId(c.req.raw));
+      if (limited) return limited;
+      await next();
+    });
+  }
+  app.route(
+    "/",
+    appFeedbackRoutes({
+      announcementsJson: process.env.ANNOUNCEMENTS_JSON,
+      bugReportsDir: process.env.BUG_REPORTS_DIR,
+      adminEmails: env.adminEmails,
+      email,
+      onEmailError,
+      userIdFor: sessionUserId,
+    }),
+  );
   mountApiRequestBodyLimits(app);
   mountScreenTarget(app, prisma, env.screenProxySecret);
   mountScriptAssets(app);
@@ -995,6 +1019,9 @@ async function buildApp(overrides: CreateAppOverrides): Promise<AppHandles> {
     if (isBlockedAuthPath(path)) {
       return c.json({ error: "Not available in version 1" }, 404);
     }
+    // Per-address limit on sign-in/sign-up attempts; sign-up itself stays open.
+    const limited = await limitRpc(c, prisma, undefined);
+    if (limited) return limited;
     const ip = requestClientIp(c);
     const response = await auth.handler(withClientIp(emptyAuthBodyAsJson(c.req.raw), ip));
     await auditAuthResponse(path, ip, response);

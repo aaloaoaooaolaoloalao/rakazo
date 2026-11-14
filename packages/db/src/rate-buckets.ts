@@ -3,9 +3,14 @@ import { runAsSystem } from "./row-security.js";
 
 type RateDb = Pick<PrismaClient, "apiRateBucket">;
 
-/** Increment the one-minute bucket and return the count including this request. */
-export async function takeRateBucket(prisma: RateDb, key: string, now = new Date()): Promise<number> {
-  const windowStart = new Date(Math.floor(now.getTime() / 60_000) * 60_000);
+/** Increment the bucket for the current window and return the count including this request. */
+export async function takeRateBucket(
+  prisma: RateDb,
+  key: string,
+  now = new Date(),
+  windowMs = 60_000,
+): Promise<number> {
+  const windowStart = new Date(Math.floor(now.getTime() / windowMs) * windowMs);
   return runAsSystem("count an api rate bucket", async () => {
     const row = await prisma.apiRateBucket.upsert({
       where: { key_windowStart: { key, windowStart } },
@@ -14,7 +19,9 @@ export async function takeRateBucket(prisma: RateDb, key: string, now = new Date
     });
     if (Math.random() < 0.01) {
       await prisma.apiRateBucket.deleteMany({
-        where: { windowStart: { lt: new Date(now.getTime() - 10 * 60_000) } },
+        where: {
+          windowStart: { lt: new Date(now.getTime() - Math.max(10 * 60_000, 2 * windowMs)) },
+        },
       });
     }
     return row.count;
