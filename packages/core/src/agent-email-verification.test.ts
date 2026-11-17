@@ -41,9 +41,10 @@ describe("procedureRequiresVerifiedEmail", () => {
 
 describe("transactionalEmailConfigured", () => {
   it("detects resend and smtp", () => {
-    expect(transactionalEmailConfigured({ EMAIL_PROVIDER: "resend", EMAIL_API_KEY: "re_xxx" })).toBe(
-      true,
-    );
+    expect(
+      transactionalEmailConfigured({ EMAIL_PROVIDER: "resend", EMAIL_API_KEY: "re_xxx" }),
+    ).toBe(true);
     expect(transactionalEmailConfigured({ SMTP_URL: "smtp://localhost" })).toBe(true);
+    expect(transactionalEmailConfigured({ RESEND_API_KEY: "re_xxx" })).toBe(true);
   });
 });

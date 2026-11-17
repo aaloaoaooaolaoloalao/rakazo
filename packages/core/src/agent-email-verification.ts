@@ -5,7 +5,7 @@ export function transactionalEmailConfigured(env: NodeJS.ProcessEnv = process.en
   const provider = env.EMAIL_PROVIDER?.trim().toLowerCase();
   if (provider && provider !== "none") return true;
   if (env.SMTP_URL?.trim()) return true;
-  if (env.EMAIL_API_KEY?.trim()) return true;
+  if (env.EMAIL_API_KEY?.trim() || env.RESEND_API_KEY?.trim()) return true;
   return false;
 }
 

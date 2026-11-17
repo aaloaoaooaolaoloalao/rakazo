@@ -556,6 +556,8 @@ async function buildApp(overrides: CreateAppOverrides): Promise<AppHandles> {
     analytics,
     passwordAuth: env.passwordAuth,
     breachedPasswordCheck: env.breachedPasswordCheck,
+    emailVerificationCodes: env.emailVerificationCodes,
+    requireEmailVerification: env.requireEmailVerification,
     oidc: env.oidc,
     apple: env.apple,
     secret: env.authSecret,

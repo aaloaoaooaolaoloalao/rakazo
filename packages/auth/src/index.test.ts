@@ -54,7 +54,13 @@ describe("auth policy", () => {
           create: vi.fn().mockRejectedValue(error),
         },
         apiRateBucket: {
-          upsert: vi.fn().mockResolvedValue({ count: 1, key: "auth-email:test@example.test", windowStart: new Date() }),
+          upsert: vi
+            .fn()
+            .mockResolvedValue({
+              count: 1,
+              key: "auth-email:test@example.test",
+              windowStart: new Date(),
+            }),
           deleteMany: vi.fn().mockResolvedValue({ count: 0 }),
         },
       } as never,
@@ -105,7 +111,7 @@ describe("auth policy", () => {
 });
 
 describe("authRateLimitOptions", () => {
-  it("caps credential routes at 10 attempts per 15 minutes in a shared table", () => {
+  it("caps credential routes at 10 attempts per 15 minutes and sign-up at 5 per hour in a shared table", () => {
     expect(authRateLimitOptions("production")).toEqual({
       enabled: true,
       storage: "database",
@@ -114,10 +120,11 @@ describe("authRateLimitOptions", () => {
         "/request-identity-code": { window: 600, max: 3 },
         "/confirm-identity": { window: 15 * 60, max: 10 },
         "/sign-in/email": { window: 15 * 60, max: 10 },
-        "/sign-up/email": { window: 15 * 60, max: 10 },
+        "/sign-up/email": { window: 60 * 60, max: 5 },
         "/request-password-reset": { window: 15 * 60, max: 10 },
         "/email-otp/send-verification-otp": { window: 15 * 60, max: 10 },
         "/sign-in/email-otp": { window: 15 * 60, max: 10 },
+        "/email-otp/verify-email": { window: 15 * 60, max: 10 },
         "/passkey/verify-authentication": { window: 15 * 60, max: 10 },
         "/passkey/verify-registration": { window: 15 * 60, max: 10 },
         "/passkey/generate-authenticate-options": { window: 60, max: 30 },

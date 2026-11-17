@@ -41,6 +41,10 @@ export interface AppEnv {
   passwordAuth?: boolean;
   /** Opt-in Have I Been Pwned check for new passwords. Default off: it calls an outside service. */
   breachedPasswordCheck?: boolean;
+  /** EMAIL_VERIFICATION_CODES=true: verification emails carry a 6-digit code, not a link. */
+  emailVerificationCodes?: boolean;
+  /** REQUIRE_EMAIL_VERIFICATION=true: email+password accounts sign in only once verified. */
+  requireEmailVerification?: boolean;
   oidc?: OidcConfig;
   apple?: AppleSignInConfig;
   nodeEnv: string;
@@ -211,7 +215,9 @@ export function loadEnv(source: NodeJS.ProcessEnv = process.env): AppEnv {
   const apple = appleAuthFromEnv(source);
   const passwordAuth = source.AUTH_PASSWORD_ENABLED !== "false";
   if (!passwordAuth && !issuer && !apple)
-    throw new Error("AUTH_PASSWORD_ENABLED=false requires OIDC or Sign in with Apple configuration");
+    throw new Error(
+      "AUTH_PASSWORD_ENABLED=false requires OIDC or Sign in with Apple configuration",
+    );
   const oidc =
     issuer && clientId && clientSecret
       ? {
@@ -233,6 +239,8 @@ export function loadEnv(source: NodeJS.ProcessEnv = process.env): AppEnv {
   return {
     passwordAuth,
     breachedPasswordCheck: source.AUTH_BREACHED_PASSWORD_CHECK_ENABLED === "true",
+    emailVerificationCodes: source.EMAIL_VERIFICATION_CODES === "true",
+    requireEmailVerification: source.REQUIRE_EMAIL_VERIFICATION === "true",
     oidc,
     apple,
     nodeEnv: source.NODE_ENV ?? "",
@@ -304,7 +312,8 @@ export function loadEnv(source: NodeJS.ProcessEnv = process.env): AppEnv {
     apnsVoip: apnsVoipConfig(source),
     smtpUrl: optional(source.SMTP_URL),
     emailProvider: optional(source.EMAIL_PROVIDER),
-    emailApiKey: optional(source.EMAIL_API_KEY),
+    // RESEND_API_KEY is accepted as an alias so a Resend key can be set under its own name.
+    emailApiKey: optional(source.EMAIL_API_KEY) ?? optional(source.RESEND_API_KEY),
     emailFrom: optional(source.EMAIL_FROM),
     emailReplyTo: optional(source.EMAIL_REPLY_TO),
     welcomeEmailEnabled: source.WELCOME_EMAIL_ENABLED === "true",

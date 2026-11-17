@@ -334,6 +334,20 @@ describe("loadEnv", () => {
     expect(loadEnv(base).emailApiKey).toBeUndefined();
   });
 
+  it("accepts RESEND_API_KEY and reads the email verification switches", () => {
+    expect(loadEnv({ ...base, RESEND_API_KEY: "fake-resend" }).emailApiKey).toBe("fake-resend");
+    expect(
+      loadEnv({ ...base, EMAIL_API_KEY: "generic", RESEND_API_KEY: "fake-resend" }).emailApiKey,
+    ).toBe("generic");
+    expect(loadEnv(base)).toMatchObject({
+      emailVerificationCodes: false,
+      requireEmailVerification: false,
+    });
+    expect(
+      loadEnv({ ...base, EMAIL_VERIFICATION_CODES: "true", REQUIRE_EMAIL_VERIFICATION: "true" }),
+    ).toMatchObject({ emailVerificationCodes: true, requireEmailVerification: true });
+  });
+
   it("defaults the remote MCP private-endpoint escape to off", () => {
     expect(loadEnv(base).mcpAllowPrivateEndpoint).toBe(false);
     expect(loadEnv({ ...base, MCP_ALLOW_PRIVATE_ENDPOINT: "true" }).mcpAllowPrivateEndpoint).toBe(
