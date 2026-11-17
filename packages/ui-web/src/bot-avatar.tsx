@@ -72,6 +72,8 @@ export interface BotAvatarProps {
   status?: string;
   identity?: string;
   className?: string;
+  /** The create and edit hero: dots travel between shapes and look around. */
+  morph?: boolean;
 }
 
 export const BotAvatar = memo(function BotAvatar({
@@ -82,6 +84,7 @@ export const BotAvatar = memo(function BotAvatar({
   status,
   identity = "",
   className,
+  morph = false,
 }: BotAvatarProps) {
   const isWorking = ACTIVE_RUN_STATUSES.some((s) => s === status);
 
@@ -137,6 +140,8 @@ export const BotAvatar = memo(function BotAvatar({
       color={colorDef.hex}
       size={size}
       mood={sparkMood(activity ?? live, isWorking)}
+      seed={effectiveId}
+      morph={morph}
       className={className}
     />
   );

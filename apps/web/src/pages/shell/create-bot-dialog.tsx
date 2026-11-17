@@ -119,6 +119,7 @@ export function CreateBotDialog({
               identity={avatarSet === "rakazo" ? previewId : look.identity}
               size={96}
               avatarSet={avatarSet}
+              morph
             />
           </div>
           <Input

@@ -352,8 +352,9 @@ export function AuthPage({ mode }: { mode: AuthMode }) {
                 </div>
               ) : null}
               {codeStep ? (
-                <div className="flex w-full justify-center">
+                <div className="flex w-full justify-center" dir="ltr">
                   <InputOTP
+                    dir="ltr"
                     aria-label={t({ message: "Code", context: "email sign-in" })}
                     maxLength={CODE_LENGTH}
                     pattern={"^\\d+$"}
@@ -741,8 +742,9 @@ function EmailVerificationStep({
       <p className="mb-6 text-center text-muted-foreground">
         <Trans>We sent a 6-digit code to {email}. Enter it to verify this account.</Trans>
       </p>
-      <div className="flex w-full justify-center">
+      <div className="flex w-full justify-center" dir="ltr">
         <InputOTP
+          dir="ltr"
           aria-label={t`Verification code`}
           maxLength={CODE_LENGTH}
           pattern={"^\\d+$"}

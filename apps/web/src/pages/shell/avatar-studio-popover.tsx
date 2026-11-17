@@ -299,6 +299,7 @@ export function AvatarStudioPopover({
               size={78}
               status={status}
               avatarSet={avatarSet}
+              morph
             />
           </div>
 
