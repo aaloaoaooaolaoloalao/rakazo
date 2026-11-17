@@ -11,6 +11,7 @@ import { disabledBuiltinToolSet } from "@rakazo/contracts";
 import {
   assertTransition,
   botMessageAllowsSilence,
+  EMAIL_VERIFICATION_REQUIRED_RUN_ERROR,
   expandSkillReferencesInPrompt,
   formatSkillRunPrompt,
   formatSkillsCatalogInstruction,
@@ -34,6 +35,7 @@ import {
 } from "@rakazo/core";
 import type { ThreadEvents } from "@rakazo/db";
 import {
+  agentRunBlockedForUnverifiedEmail,
   availableInSpace,
   effectiveMemoryScope,
   isPartialReplyClientNonce,
@@ -373,6 +375,26 @@ export function createRunExecutor(executorDeps: ExecutorDeps) {
         data: { status: "running" },
       });
       if (started.count !== 1) return;
+      // Every run passes here (chat, routines, webhooks, messaging, other bots, continuations),
+      // so this one read gates them all before any computer or model is touched.
+      if (await agentRunBlockedForUnverifiedEmail(deps.prisma, run.userId)) {
+        const attempt = await deps.prisma.attempt.create({
+          data: { runId, fence, status: "running" },
+        });
+        const owner = await deps.prisma.bot.findUnique({
+          where: { id: run.botId },
+          select: { name: true },
+        });
+        await failRunBeforeTurn(
+          withRunLease(deps, runId, { owner: workerId, fence }),
+          run,
+          owner?.name ?? "Bot",
+          { attemptId: attempt.id, workerId, fence },
+          EMAIL_VERIFICATION_REQUIRED_RUN_ERROR,
+        );
+        getLogger().info("run.skipped_unverified_email", { "run.id": runId });
+        return;
+      }
       const leaseTarget = await deps.prisma.bot.findUniqueOrThrow({
         where: { id: run.botId },
         select: {

@@ -12,6 +12,7 @@ import {
   isOneShotRoutineCrons,
   nextRoutineRunDateAcross,
 } from "@rakazo/core";
+import { agentRunBlockedForUnverifiedEmail } from "@rakazo/db";
 import { getLogger } from "@rakazo/logging";
 import { sanitizedError } from "@rakazo/logging/monitoring";
 import { protectedComputerLifecycleRefusal } from "./desktop-command-guard.js";
@@ -133,6 +134,10 @@ export async function wakeRoutine(deps: ExecutorDeps, routineId: string, schedul
     return;
   }
   if (!bot?.thread) return;
+  if (await agentRunBlockedForUnverifiedEmail(deps.prisma, routine.userId)) {
+    await skipRoutineForUnverifiedEmail(deps, routine, scheduledAt);
+    return;
+  }
   const targetThread = routine.threadId
     ? await deps.prisma.thread.findFirst({
         where: {
@@ -311,6 +316,32 @@ export async function wakeRoutine(deps: ExecutorDeps, routineId: string, schedul
   }
 }
 
+/**
+ * An unverified owner's routine stays as it is: active, same prompt and triggers. A recurring one
+ * moves on to its next occurrence without a run; a one-time one stays due and fires once the
+ * owner verifies.
+ */
+async function skipRoutineForUnverifiedEmail(
+  deps: ExecutorDeps,
+  routine: { id: string; crons: string[]; timezone: string },
+  scheduledAt: Date,
+) {
+  getLogger().info("routine.skipped_unverified_email", { "routine.id": routine.id });
+  if (isOneShotRoutineCrons(routine.crons)) return;
+  const nextRunAt = nextRoutineRunDateAcross(
+    routine.crons,
+    scheduledAt,
+    new Date(Date.now()),
+    routine.timezone,
+  );
+  if (!nextRunAt) return;
+  const moved = await deps.prisma.routine.updateMany({
+    where: { id: routine.id, active: true, nextRunAt: scheduledAt },
+    data: { nextRunAt },
+  });
+  if (moved.count === 1) await deps.jobs.enqueue(routineWakeupJob(routine.id, nextRunAt));
+}
+
 export async function notifyRoutineRetryAttemptsExhausted(deps: ExecutorDeps, runId: string) {
   const failed = await deps.prisma.run.findUnique({ where: { id: runId } });
   if (
@@ -344,6 +375,8 @@ export async function retryRoutineRun(deps: ExecutorDeps, runId: string) {
   ) {
     return;
   }
+  // No retry for an unverified owner; the routine itself is left untouched.
+  if (await agentRunBlockedForUnverifiedEmail(deps.prisma, failed.userId)) return;
   const routine = await deps.prisma.routine.findUnique({
     where: { id: failed.routineId },
     select: {
