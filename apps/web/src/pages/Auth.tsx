@@ -579,13 +579,15 @@ export function AuthFrame({
       </div>
       <div className="flex flex-1 items-center justify-center px-6 pb-16">
         <form onSubmit={onSubmit} className="flex w-full max-w-[460px] flex-col items-center">
-          <div className="flex h-[74px] w-[74px] items-center justify-center gap-[11px] rounded-full bg-muted">
-            <span className="h-5 w-[9px] rounded-full bg-primary" />
-            <span className="h-5 w-[9px] rounded-full bg-primary" />
-          </div>
-          <h1 aria-live="polite" className="mb-9 mt-7 text-4xl font-medium tracking-tight">
+          <img
+            src="/apple-touch-icon.png"
+            alt=""
+            className="h-[74px] w-[74px] rounded-[22px]"
+          />
+          <h1 className="mb-2 mt-7 text-4xl font-medium tracking-tight">SparkAI</h1>
+          <p aria-live="polite" className="mb-9 text-base text-muted-foreground">
             {title}
-          </h1>
+          </p>
           {children}
         </form>
       </div>
