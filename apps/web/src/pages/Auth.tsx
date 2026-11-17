@@ -50,6 +50,7 @@ export function AuthPage({ mode }: { mode: AuthMode }) {
   const [capabilityError, setCapabilityError] = useState(false);
   const [capabilityAttempt, setCapabilityAttempt] = useState(0);
   const [codeSent, setCodeSent] = useState(false);
+  const [awaitingEmailVerification, setAwaitingEmailVerification] = useState(false);
   const [code, setCode] = useState("");
   const useCode = Boolean(reset?.passwordAuth && reset.emailCode) && mode !== "forgot";
   // A blank password asks for an emailed code, so code-only accounts need no toggle.
@@ -57,7 +58,9 @@ export function AuthPage({ mode }: { mode: AuthMode }) {
   const codeStep = useCode && codeSent;
   const passwordFieldId = mode === "in" ? "current-password" : "new-password";
   const title =
-    sent || codeStep ? (
+    awaitingEmailVerification ? (
+      <Trans>Verify your email</Trans>
+    ) : sent || codeStep ? (
       <Trans>Check your email</Trans>
     ) : mode === "in" ? (
       <Trans>Sign in to SparkAI</Trans>
@@ -90,6 +93,10 @@ export function AuthPage({ mode }: { mode: AuthMode }) {
   async function submit(e: React.FormEvent) {
     e.preventDefault();
     if (!reset?.passwordAuth) return;
+    if (awaitingEmailVerification) {
+      if (code.length === CODE_LENGTH) await verifyEmailCode(code);
+      return;
+    }
     if (codeStep) {
       // An unfinished code would spend one of the code's three attempts.
       if (code.length === CODE_LENGTH) await verifyCode(code);
@@ -150,11 +157,15 @@ export function AuthPage({ mode }: { mode: AuthMode }) {
             })
           : await authClient.signIn.email({ email: trimmedEmail, password });
       if (result.error) {
+        if (isEmailNotVerified(result.error)) {
+          openEmailVerification();
+          return;
+        }
         setError(authErrorText(result.error, t`Could not continue`));
         return;
       }
       if (mode === "up" && signupRequiresEmailVerification(result.data)) {
-        setSearchParams({ verify: "email" });
+        openEmailVerification();
         return;
       }
       enterApp();
@@ -196,6 +207,48 @@ export function AuthPage({ mode }: { mode: AuthMode }) {
     // first beats it, so the guards bounce through sign-in and the shell.
     entering.current = true;
     setPending(true);
+  }
+
+  function openEmailVerification() {
+    setAwaitingEmailVerification(true);
+    setCode("");
+    setError(null);
+  }
+
+  async function verifyEmailCode(otp: string) {
+    if (pending) return;
+    setPending(true);
+    setError(null);
+    try {
+      const result = await authClient.emailOtp.verifyEmail({ email: email.trim(), otp });
+      if (result.error) {
+        setError(authErrorText(result.error, t`That code is incorrect.`));
+        setCode("");
+        return;
+      }
+      enterApp();
+    } catch {
+      setError(t`Could not reach the server`);
+    } finally {
+      if (!entering.current) setPending(false);
+    }
+  }
+
+  async function resendVerificationCode() {
+    setPending(true);
+    setError(null);
+    try {
+      const result = await authClient.emailOtp.sendVerificationOtp({
+        email: email.trim(),
+        type: "email-verification",
+      });
+      if (result.error) setError(authErrorText(result.error, t`Could not continue`));
+      else setCode("");
+    } catch {
+      setError(t`Could not reach the server`);
+    } finally {
+      setPending(false);
+    }
   }
 
   function leaveCodeStep() {
@@ -271,7 +324,18 @@ export function AuthPage({ mode }: { mode: AuthMode }) {
           ) : null}
           {reset?.passwordAuth ? (
             <>
-              {mode === "up" && !codeStep ? (
+              {awaitingEmailVerification ? (
+                <EmailVerificationStep
+                  email={email.trim()}
+                  code={code}
+                  pending={pending}
+                  error={error}
+                  onChange={setCode}
+                  onComplete={(value) => void verifyEmailCode(value)}
+                  onResend={() => void resendVerificationCode()}
+                />
+              ) : null}
+              {mode === "up" && !codeStep && !awaitingEmailVerification ? (
                 <div className="mb-4 w-full">
                   <Label htmlFor="name" className="text-muted-foreground">
                     <Trans>Name</Trans>
@@ -311,7 +375,7 @@ export function AuthPage({ mode }: { mode: AuthMode }) {
                     </InputOTPGroup>
                   </InputOTP>
                 </div>
-              ) : (
+              ) : awaitingEmailVerification ? null : (
                 <div className="w-full">
                   <Label htmlFor="email" className="text-muted-foreground">
                     <Trans>Email</Trans>
@@ -348,7 +412,7 @@ export function AuthPage({ mode }: { mode: AuthMode }) {
                   ) : null}
                 </div>
               )}
-              {mode !== "forgot" && !codeStep ? (
+              {mode !== "forgot" && !codeStep && !awaitingEmailVerification ? (
                 <div className="mt-4 w-full">
                   <Label htmlFor={passwordFieldId} className="text-muted-foreground">
                     <Trans>Password</Trans>
@@ -383,11 +447,16 @@ export function AuthPage({ mode }: { mode: AuthMode }) {
               <Button
                 type="submit"
                 size="lg"
-                disabled={pending || (codeStep && code.length < CODE_LENGTH)}
+                disabled={
+                  pending ||
+                  ((codeStep || awaitingEmailVerification) && code.length < CODE_LENGTH)
+                }
                 className={submitClass}
               >
                 {pending ? (
                   <Trans>Working…</Trans>
+                ) : awaitingEmailVerification ? (
+                  <Trans>Confirm</Trans>
                 ) : codeMode ? (
                   <Trans>Continue</Trans>
                 ) : mode === "in" ? (
@@ -398,7 +467,7 @@ export function AuthPage({ mode }: { mode: AuthMode }) {
                   <Trans>Create account</Trans>
                 )}
               </Button>
-              {mode === "in" && !codeStep ? (
+              {mode === "in" && !codeStep && !awaitingEmailVerification ? (
                 <PasskeySignIn
                   disabled={pending}
                   className={submitClass}
@@ -430,7 +499,23 @@ export function AuthPage({ mode }: { mode: AuthMode }) {
                   <Trans>Continue with {reset.sso.name}</Trans>
                 </Button>
               ) : null}
-              {codeStep ? null : (
+              {awaitingEmailVerification ? (
+                <Button
+                  type="button"
+                  variant="link"
+                  size="sm"
+                  disabled={pending}
+                  className="mt-3 text-muted-foreground"
+                  onClick={() => {
+                    setAwaitingEmailVerification(false);
+                    setCode("");
+                    setError(null);
+                  }}
+                >
+                  <Trans>Wrong email? Go back</Trans>
+                </Button>
+              ) : null}
+              {codeStep || awaitingEmailVerification ? null : (
                 <p className="mt-8 text-muted-foreground">
                   {mode === "in" ? (
                     <>
@@ -625,6 +710,71 @@ function PasswordField({
         onChange={(event) => onChange(event.target.value)}
         className={fieldClass}
       />
+    </div>
+  );
+}
+
+function isEmailNotVerified(error: unknown): boolean {
+  if (!error || typeof error !== "object") return false;
+  const record = error as { code?: unknown; message?: unknown };
+  return `${String(record.code ?? "")} ${String(record.message ?? "")}`.includes("EMAIL_NOT_VERIFIED");
+}
+
+function EmailVerificationStep({
+  email,
+  code,
+  pending,
+  onChange,
+  onComplete,
+  onResend,
+}: {
+  email: string;
+  code: string;
+  pending: boolean;
+  onChange: (value: string) => void;
+  onComplete: (value: string) => void;
+  onResend: () => void;
+}) {
+  const { t } = useLingui();
+  return (
+    <div className="w-full">
+      <p className="mb-6 text-center text-muted-foreground">
+        <Trans>We sent a 6-digit code to {email}. Enter it to verify this account.</Trans>
+      </p>
+      <div className="flex w-full justify-center">
+        <InputOTP
+          aria-label={t`Verification code`}
+          maxLength={CODE_LENGTH}
+          pattern={"^\\d+$"}
+          inputMode="numeric"
+          autoComplete="one-time-code"
+          autoFocus
+          value={code}
+          onChange={onChange}
+          onComplete={onComplete}
+          disabled={pending}
+        >
+          <InputOTPGroup>
+            {[0, 1, 2, 3, 4, 5].map((index) => (
+              <InputOTPSlot
+                key={index}
+                index={index}
+                className="size-12 text-lg first:rounded-l-xl last:rounded-r-xl"
+              />
+            ))}
+          </InputOTPGroup>
+        </InputOTP>
+      </div>
+      <Button
+        type="button"
+        variant="link"
+        size="sm"
+        disabled={pending}
+        className="mt-3 w-full text-muted-foreground"
+        onClick={onResend}
+      >
+        <Trans>Resend code</Trans>
+      </Button>
     </div>
   );
 }

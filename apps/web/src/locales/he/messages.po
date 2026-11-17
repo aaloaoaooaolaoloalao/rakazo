@@ -5970,6 +5970,27 @@ msgstr "התחברו ב-<0>{0}</0> והדביקו כאן את הקוד."
 msgid "Sign in to SparkAI"
 msgstr "התחברות ל-SparkAI"
 
+msgid "Verify your email"
+msgstr "אימות המייל"
+
+msgid "We sent a 6-digit code to {email}. Enter it to verify this account."
+msgstr "שלחנו קוד בן 6 ספרות אל {email}. הזינו אותו כדי לאמת את החשבון."
+
+msgid "Verification code"
+msgstr "קוד אימות"
+
+msgid "Resend code"
+msgstr "שליחה מחדש"
+
+msgid "That code is incorrect."
+msgstr "הקוד שגוי."
+
+msgid "Wrong email? Go back"
+msgstr "אימייל לא נכון? חזרה"
+
+msgid "Confirm"
+msgstr "אישור"
+
 #: src/lib/user-error.ts
 msgid "Sign in to your existing account to link SSO"
 msgstr "יש להתחבר לחשבון הקיים כדי לקשר SSO"
