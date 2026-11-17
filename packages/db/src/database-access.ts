@@ -166,8 +166,9 @@ const NO_BYPASS_KEY_WARNING =
 /** Lets the runtime login's system context through the policies (see rlsBypassKey). */
 async function storeBypassKey(owner: Client, runtimeUrl: string): Promise<void> {
   // One statement, so the table is never empty, which would accept the bypass alone.
-  // The previous key stays until the deploy after this one. The release still serving
-  // traffic signed in with that key; dropping it here makes every lookup look empty,
+  // The DELETE cannot see the row inserted above, so the new digest is kept by value
+  // and only the newest key already stored is kept with it. That is the key the
+  // release still serving traffic uses. Dropping it makes every lookup look empty,
   // and clients treat that empty result as a signed-out session.
   await owner.query(
     `WITH stored AS (
@@ -176,11 +177,13 @@ async function storeBypassKey(owner: Client, runtimeUrl: string): Promise<void> 
        ON CONFLICT (digest) DO UPDATE SET created_at = now()
      )
      DELETE FROM rakazo_private.rls_bypass_keys
-     WHERE digest NOT IN (
-       SELECT digest FROM rakazo_private.rls_bypass_keys
-       ORDER BY created_at DESC
-       LIMIT 2
-     )`,
+     WHERE digest <> sha256(convert_to($1, 'UTF8'))
+       AND digest NOT IN (
+         SELECT digest FROM rakazo_private.rls_bypass_keys
+         WHERE digest <> sha256(convert_to($1, 'UTF8'))
+         ORDER BY created_at DESC
+         LIMIT 1
+       )`,
     [rlsBypassKey(runtimeUrl)],
   );
 }
