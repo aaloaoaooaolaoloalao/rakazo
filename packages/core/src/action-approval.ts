@@ -539,6 +539,130 @@ export function resolveActionApprovalForTools(input: {
  */
 export type ApprovalMode = "never" | "auto" | "ask";
 
+const EMAIL_SEND_APPS = new Set([
+  "gmail",
+  "googlemail",
+  "outlook",
+  "microsoft_outlook",
+  "email",
+  "mail",
+]);
+const CHAT_SEND_APPS = new Set([
+  "slack",
+  "slackbot",
+  "teams",
+  "microsoft_teams",
+  "discord",
+  "telegram",
+  "lark",
+  "feishu",
+  "google_chat",
+  "gchat",
+  "whatsapp",
+  "imessage",
+  "sendblue",
+  "photon",
+  "twilio",
+  "sms",
+  "mms",
+  "messagebird",
+  "vonage",
+]);
+const SOCIAL_POST_APPS = new Set([
+  "twitter",
+  "x_twitter",
+  "linkedin",
+  "facebook",
+  "instagram",
+  "reddit",
+  "bluesky",
+  "mastodon",
+  "tiktok",
+  "threads",
+]);
+/** Pipedream-style action names that deliver a message or post, with no app prefix. */
+const EXACT_OUTBOUND_SEND_ACTIONS = new Set([
+  "send_email",
+  "send_mail",
+  "reply_email",
+  "reply_to_email",
+  "reply_to_thread",
+  "forward_email",
+  "forward_message",
+  "send_draft",
+  "send_message",
+  "post_message",
+  "send_sms",
+  "send_mms",
+  "send_whatsapp",
+  "send_whatsapp_message",
+  "send_imessage",
+  "post_tweet",
+  "send_tweet",
+  "create_tweet",
+  "create_post",
+  "publish_post",
+]);
+
+const OUTBOUND_SEND_VERB = /(?:^|_)(?:sends?|repl(?:y|ies)|forwards?)(?:_|$)/;
+const CHAT_WRITE_VERB = /(?:^|_)(?:sends?|repl(?:y|ies)|forwards?|posts?|schedule|create)(?:_|$)/;
+const CHAT_MESSAGE_NOUN = /(?:^|_)(?:messages?|sms|mms|chats?|dms?)(?:_|$)/;
+const SOCIAL_WRITE_VERB = /(?:^|_)(?:create|creation|publishes?|posts?|tweets?|sends?)(?:_|$)/;
+const SOCIAL_POST_NOUN = /(?:^|_)(?:posts?|tweets?|status|stories|story)(?:_|$)/;
+const SOCIAL_READ_VERB = /(?:^|_)(?:get|list|search|find|read|delete|fetch)(?:_|$)/;
+
+function approvalToolName(toolName: string): string {
+  const normalized = toolName.trim().toLowerCase().replace(/-/g, "_");
+  // MCP tools are `mcp__<server>__<action>`, optionally with an account suffix on the action.
+  const mcp = /^mcp__(.+?)__(.+)$/.exec(normalized);
+  const action = mcp?.[2] ?? normalized;
+  const server = mcp?.[1];
+  const account = action.indexOf("__");
+  const bare = account === -1 ? action : action.slice(0, account);
+  return server ? `${server}_${bare}` : bare;
+}
+
+function outboundApp(name: string, connectorKind: string | undefined): string {
+  const kind = connectorKind?.trim().toLowerCase().replace(/-/g, "_") ?? "";
+  if (EMAIL_SEND_APPS.has(kind) || CHAT_SEND_APPS.has(kind) || SOCIAL_POST_APPS.has(kind)) {
+    return kind;
+  }
+  const apps = [...EMAIL_SEND_APPS, ...CHAT_SEND_APPS, ...SOCIAL_POST_APPS].sort(
+    (left, right) => right.length - left.length,
+  );
+  return (
+    apps.find((app) => name === app || name.startsWith(`${app}_`) || name.startsWith(`${app}__`)) ??
+    ""
+  );
+}
+
+/**
+ * A tool that delivers something to other people: email send, reply, or forward; a Slack, Teams,
+ * or other chat message; SMS, WhatsApp, or iMessage; or a public post. Creating a draft does not
+ * deliver it. Checked before auto-approve, always-allow, and never-ask.
+ */
+export function isOutboundSendTool(toolName: string, connectorKind?: string): boolean {
+  const name = approvalToolName(toolName);
+  if (!name) return false;
+  // A draft stays on the user's account. Sending that draft still delivers it.
+  if (name.includes("draft") && !/(?:^|_)sends?(?:_|$)/.test(name)) return false;
+  if (EXACT_OUTBOUND_SEND_ACTIONS.has(name)) return true;
+  const app = outboundApp(name, connectorKind);
+  if (EMAIL_SEND_APPS.has(app) && OUTBOUND_SEND_VERB.test(name)) return true;
+  if (
+    CHAT_SEND_APPS.has(app) &&
+    (OUTBOUND_SEND_VERB.test(name) || (CHAT_WRITE_VERB.test(name) && CHAT_MESSAGE_NOUN.test(name)))
+  ) {
+    return true;
+  }
+  return (
+    SOCIAL_POST_APPS.has(app) &&
+    SOCIAL_WRITE_VERB.test(name) &&
+    SOCIAL_POST_NOUN.test(name) &&
+    !SOCIAL_READ_VERB.test(name)
+  );
+}
+
 /** The mode a stored preference means. Skipping approvals is Never ask, an enabled review is Auto. */
 export function approvalModeFromPreference(preference: {
   enabled: boolean;
@@ -559,10 +683,12 @@ export type AutoReviewJudgeDecision = "pass" | "ask" | "error";
 
 /**
  * The gate after rule resolution. A block refuses in every mode. A purchase asks in every mode, Never
- * ask included, and no allow rule or review passes it. An approval a person must give
- * asks, except in Never ask, which never waits: there it runs, unless `steerable` says outside
- * text could have asked for it. Otherwise Never ask runs it, an ask rule asks, and anything that
- * would ask goes to the approval model in Auto, falling back to asking when no model is set up.
+ * ask included, and no allow rule or review passes it. An outbound send (see isOutboundSendTool)
+ * also asks in every mode: an allow rule, Never ask, and the approval model cannot pass it.
+ * An approval a person must give asks, except in Never ask, which never waits: there it runs, unless
+ * `steerable` says outside text could have asked for it. Otherwise Never ask runs it, an ask rule
+ * asks, and anything that would ask goes to the approval model in Auto, falling back to asking when
+ * no model is set up.
  */
 export function planActionGate(input: {
   resolved: ActionApprovalResolved;
@@ -582,9 +708,12 @@ export function planActionGate(input: {
   newDestination?: boolean;
   /** A click that completes a purchase: a person approves it each time, in every mode. */
   purchase?: boolean;
+  /** Delivers a message or post to other people (see isOutboundSendTool). A person approves it each time. */
+  outboundSend?: boolean;
 }): "ask" | "allow" | "judge" | "deny" {
   if (input.resolved.decision === "deny") return "deny";
   if (input.purchase) return "ask";
+  if (input.outboundSend) return "ask";
   if (input.mandatory) {
     if (input.mode !== "never") return "ask";
     return input.steerable ? "deny" : "allow";

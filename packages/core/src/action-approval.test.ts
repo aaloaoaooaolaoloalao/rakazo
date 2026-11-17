@@ -10,6 +10,7 @@ import {
   connectorToolRequiresApproval,
   decisiveActionApprovalRules,
   isApprovalAskBlock,
+  isOutboundSendTool,
   isOwnerStartedRun,
   isSecretAskBlock,
   newSiteOutcome,
@@ -552,6 +553,99 @@ describe("planActionGate", () => {
     expect(gate("auto", { newDestination: true, checkerConfigured: false })).toBe("ask");
     expect(gate("ask", { resolved: allowed, newDestination: true })).toBe("ask");
     expect(gate("never", { newDestination: true })).toBe("allow");
+  });
+});
+
+describe("outbound sends", () => {
+  const open = {
+    decision: "allow" as const,
+    source: "default" as const,
+    matchingRules: [],
+    decisiveRules: [],
+  };
+  const allowed = {
+    decision: "allow" as const,
+    source: "always_allow" as const,
+    matchingRules: [],
+    decisiveRules: [],
+  };
+
+  function gateFor(toolName: string, mode: ApprovalMode, rules: ActionApprovalRule[] = []) {
+    const outboundSend = isOutboundSendTool(toolName);
+    return planActionGate({
+      resolved: resolveActionApprovalDetail({ toolName, rules }),
+      mode,
+      consequential: true,
+      checkerConfigured: true,
+      outboundSend,
+    });
+  }
+
+  it("requires approval for a send tool in auto mode", () => {
+    for (const toolName of [
+      "GMAIL_SEND_EMAIL",
+      "gmail-reply-to-thread",
+      "outlook_forward_email",
+      "SLACK_SEND_MESSAGE",
+      "MICROSOFT_TEAMS_POST_CHANNEL_MESSAGE",
+      "TWILIO_SEND_SMS",
+      "WHATSAPP_SEND_MESSAGE",
+      "IMESSAGE_SEND_MESSAGE",
+      "TWITTER_CREATION_OF_A_POST",
+      "send_email",
+      "send_email__work",
+      "mcp__gmail__send_email",
+    ]) {
+      expect(isOutboundSendTool(toolName)).toBe(true);
+      expect(gateFor(toolName, "auto")).toBe("ask");
+    }
+  });
+
+  it("still requires approval when an always-allow rule matches the send tool", () => {
+    const rules: ActionApprovalRule[] = [
+      { effect: "always_allow", matchKind: "tool", matchValue: "gmail_send_email" },
+    ];
+    expect(resolveActionApprovalDetail({ toolName: "GMAIL_SEND_EMAIL", rules }).decision).toBe(
+      "allow",
+    );
+    expect(gateFor("GMAIL_SEND_EMAIL", "auto", rules)).toBe("ask");
+    expect(gateFor("GMAIL_SEND_EMAIL", "never", rules)).toBe("ask");
+    expect(
+      planActionGate({
+        resolved: allowed,
+        mode: "never",
+        consequential: true,
+        checkerConfigured: true,
+        outboundSend: true,
+      }),
+    ).toBe("ask");
+  });
+
+  it("does not require approval to create a draft", () => {
+    for (const toolName of [
+      "create_draft",
+      "GMAIL_CREATE_EMAIL_DRAFT",
+      "outlook_create_draft_reply",
+    ]) {
+      expect(isOutboundSendTool(toolName)).toBe(false);
+      expect(gateFor(toolName, "auto")).toBe("judge");
+    }
+    expect(gateFor("create_draft", "never")).toBe("allow");
+  });
+
+  it("leaves a non-send tool in auto mode unchanged", () => {
+    expect(isOutboundSendTool("gmail_create_label")).toBe(false);
+    expect(isOutboundSendTool("demo_send_message")).toBe(false);
+    expect(isOutboundSendTool("list_files")).toBe(false);
+    expect(gateFor("gmail_create_label", "auto")).toBe(
+      planActionGate({
+        resolved: open,
+        mode: "auto",
+        consequential: true,
+        checkerConfigured: true,
+      }),
+    );
+    expect(gateFor("destination.write", "auto")).toBe("judge");
   });
 });
 

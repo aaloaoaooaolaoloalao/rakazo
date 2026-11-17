@@ -1307,8 +1307,7 @@ describe("Composio batches", () => {
     },
   );
 
-  it("sends a send in the batch to Auto Review even with the batch tool always allowed", async () => {
-    reviewMock.mockResolvedValue({ decision: "ask", reason: "Not asked to send", model: "mock" });
+  it("asks a person before a send in the batch even when the batch tool is always allowed", async () => {
     const f = batchFixture({
       autoReview: true,
       rules: [
@@ -1317,7 +1316,7 @@ describe("Composio batches", () => {
     });
     f.setCalls([{ args: batch("GMAIL_SEND_EMAIL"), executionId: "call-1" }]);
     await f.run();
-    expect(reviewMock).toHaveBeenCalledOnce();
+    expect(reviewMock).not.toHaveBeenCalled();
     expect(f.execute).not.toHaveBeenCalled();
     expect(f.pauseRunForInput).toHaveBeenCalledOnce();
   });
