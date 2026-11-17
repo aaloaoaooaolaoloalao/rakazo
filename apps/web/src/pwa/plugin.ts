@@ -17,8 +17,8 @@ export function webManifest() {
   }));
   return {
     id: "/",
-    name: "Rakazo",
-    short_name: "Rakazo",
+    name: "SparkAI",
+    short_name: "SparkAI",
     description: "Your team of always-on agents.",
     start_url: "/",
     scope: "/",
