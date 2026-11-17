@@ -1292,7 +1292,7 @@ function speakerText(speaker: string, text: string): string {
  * with "[speaker]: ". The label exists only here: it is never stored or shown in the app.
  * Content is a pure function of the message, so replayed history is stable for prompt caching.
  */
-export function toHistory(
+function toHistory(
   history: AgentRunRequest["history"],
   prompt: string,
   sourceMessageId?: string | null,

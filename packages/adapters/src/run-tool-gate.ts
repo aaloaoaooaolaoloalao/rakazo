@@ -16,6 +16,7 @@ import {
   decisiveActionApprovalRules,
   displayName,
   humanizeToolName,
+  isOutboundSendTool,
   newSiteOutcome,
   outboundSiteGate,
   planActionGate,
@@ -254,9 +255,19 @@ export async function gateToolCall(
   const { purchase, cardUse } = request;
   // Typing a saved card is approved like a purchase: every time, by a person.
   const paying = Boolean(purchase) || Boolean(cardUse);
+  // Named before Auto, always-allow, and Never ask. A batch asks when any action it runs delivers.
+  const outboundSend = [name, ...approvalToolNames].some((toolName) =>
+    isOutboundSendTool(
+      toolName,
+      toolName === approvalName
+        ? connectorKind
+        : connectorKindFromToolName(toolName, connectorProviders),
+    ),
+  );
   const requiresApprovalByDefault =
     request.heldForApproval ||
     paying ||
+    outboundSend ||
     commandWatch ||
     requiresUnattendedApproval ||
     siteGate === "new" ||
@@ -294,7 +305,7 @@ export async function gateToolCall(
       ? { ...resolvedRules, decision: "ask" as const }
       : resolvedRules;
   const mode = approvalModeFromPreference(await ctx.trust.loadAutoReviewPreference());
-  const reviewable = mode === "auto" && !requiresMandatoryApproval;
+  const reviewable = mode === "auto" && !requiresMandatoryApproval && !outboundSend;
   const injectedReview = reviewable ? deps.autoReview : undefined;
   const reviewSettings = !reviewable || injectedReview ? null : await ctx.trust.loadApprovalModel();
   const memberChecker = reviewSettings?.primarySource === "member";
@@ -341,6 +352,7 @@ export async function gateToolCall(
         checkerConfigured,
         newDestination: siteGate === "new",
         purchase: paying,
+        outboundSend,
       });
   // Nobody is there to approve a purchase a webhook run reaches.
   if (paying && run.trigger === "webhook" && plan !== "deny") {

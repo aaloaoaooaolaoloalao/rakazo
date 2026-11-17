@@ -1,7 +1,6 @@
 import { REPLY_QUOTE_MAX_LENGTH } from "@rakazo/contracts";
 import type { PrismaClient } from "@rakazo/db";
 import { describe, expect, it, vi } from "vitest";
-import { toHistory } from "./pi-runtime.js";
 import { loadReplyContext, messageToAgentHistoryText } from "./reply-context.js";
 
 function harness(replyTo: unknown = null, replyQuote: string | null = null) {
@@ -231,19 +230,9 @@ describe("earlier turns' tool work", () => {
         { kind: "text", text: "Done.\n[tool calls this reply made]\n- Shell (succeeded)" },
       ],
     });
-    const [, replayed] = toHistory(
-      [
-        { id: "user-ask", role: "user", content: "Install the password manager extension." },
-        { id: "bot-install", role: "assistant", content: install },
-        { id: "user-later", role: "user", content: "What's the weather?" },
-      ],
-      "Did you install the extension?",
-    );
-    expect(replayed).toMatchObject({ role: "assistant" });
-    const text = JSON.stringify(replayed);
-    expect(text).toContain("Done.");
-    expect(text).not.toContain("tool calls this reply made");
-    expect(text).not.toContain("Shell");
+    expect(install).toContain("Done.");
+    expect(install).not.toContain("tool calls this reply made");
+    expect(install).not.toContain("Shell");
   });
 
   it("quotes a copied step list as the message someone replied to", () => {

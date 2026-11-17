@@ -1,3 +1,4 @@
+import type { MessageBlock } from "@rakazo/contracts";
 import { describe, expect, it } from "vitest";
 import {
   AttachmentValidationError,
@@ -5,11 +6,11 @@ import {
   attachmentExtensionForMimeType,
   attachmentsForBot,
   blocksToAgentHistoryText,
-  toolStepsHistoryText,
   decodeAttachmentBase64,
   inferAttachmentMimeType,
   normalizeVoiceTranscript,
   promptTextForAttachments,
+  toolStepsHistoryText,
   userTurnMessageForRun,
   validateAttachmentMimeType,
 } from "./attachments.js";
