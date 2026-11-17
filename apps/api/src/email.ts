@@ -2,11 +2,16 @@ import type { TransactionalEmailProvider } from "@rakazo/adapter-kit";
 import { ResendEmailProvider, SmtpEmailProvider } from "@rakazo/adapters";
 import type { AppEnv } from "./env.js";
 
+/** Sender used with Resend when EMAIL_FROM is unset. */
+export const DEFAULT_RESEND_FROM = "SparkAI <no-reply@homesserver.work>";
+
 export function configuredEmailProvider(
   env: Pick<AppEnv, "emailProvider" | "emailApiKey" | "emailFrom" | "emailReplyTo" | "smtpUrl">,
 ): TransactionalEmailProvider | undefined {
   // Preserve existing SMTP deployments when no provider is selected explicitly.
-  const provider = env.emailProvider ?? (env.smtpUrl ? "smtp" : "none");
+  // A Resend key alone selects Resend, like SMTP_URL alone selects SMTP.
+  const provider =
+    env.emailProvider ?? (env.smtpUrl ? "smtp" : env.emailApiKey ? "resend" : "none");
   switch (provider) {
     case "none":
       return undefined;
@@ -19,7 +24,7 @@ export function configuredEmailProvider(
     case "resend":
       return new ResendEmailProvider({
         apiKey: env.emailApiKey ?? "",
-        from: env.emailFrom ?? "",
+        from: env.emailFrom ?? DEFAULT_RESEND_FROM,
         replyTo: env.emailReplyTo,
       });
     default:

@@ -40,6 +40,13 @@ import { breachedPasswordCheck } from "./breached-password.js";
 import { credentialEmailRateLimit } from "./credential-email-limit.js";
 import type { EmailLocaleOf } from "./email.js";
 import { emailLocale, passwordResetEmail, signInCodeEmail, verificationEmail } from "./email.js";
+import {
+  EMAIL_CODE_COOLDOWN_CODE,
+  emailCodeCooldown,
+  SEND_EMAIL_CODE_PATH,
+  VERIFY_EMAIL_CODE_PATH,
+  verificationCodeEmail,
+} from "./email-verification-code.js";
 import { hasRecentIdentityConfirmation, identityConfirmation } from "./identity-confirmation.js";
 import type { OidcConfig } from "./oidc.js";
 import { isCurrentOidcAccount, oidcDiscovery } from "./oidc.js";
@@ -55,6 +62,11 @@ export {
   signInCodeEmail,
   verificationEmail,
 } from "./email.js";
+export {
+  EMAIL_CODE_COOLDOWN_CODE,
+  EMAIL_CODE_COOLDOWN_SECONDS,
+  verificationCodeEmail,
+} from "./email-verification-code.js";
 export type { HomeDeletionReason } from "./home-deletion-email.js";
 export { homeDeletionEmail } from "./home-deletion-email.js";
 export type { OidcConfig } from "./oidc.js";
@@ -71,6 +83,17 @@ export { welcomeEmail } from "./welcome-email.js";
 export interface AuthEnv {
   analytics?: ProductAnalytics;
   passwordAuth?: boolean;
+  /**
+   * Opt-in: the verification email carries a 6-digit code instead of a link, and the app
+   * confirms it at /email-otp/verify-email, which signs the person in. Needs `email`.
+   */
+  emailVerificationCodes?: boolean;
+  /**
+   * Opt-in: an email+password account cannot get a new session until its address is verified.
+   * Sign-in answers 403 EMAIL_NOT_VERIFIED and mails a fresh code. Sessions that already
+   * exist keep working. Sign in with Apple is unaffected (Apple verifies the address).
+   */
+  requireEmailVerification?: boolean;
   /** Opt-in: rejects new passwords found in Have I Been Pwned. Calls an outside service. */
   breachedPasswordCheck?: boolean;
   oidc?: OidcConfig;
@@ -107,7 +130,7 @@ type ValidateUserInfoArgs = Parameters<
   NonNullable<NonNullable<BetterAuthOptions["user"]>["validateUserInfo"]>
 >;
 
-const SEND_SIGN_IN_CODE_PATH = "/email-otp/send-verification-otp";
+const SEND_SIGN_IN_CODE_PATH = SEND_EMAIL_CODE_PATH;
 const CODE_SIGN_IN_PATH = "/sign-in/email-otp";
 
 const CREDENTIAL_PATHS = [
@@ -116,6 +139,7 @@ const CREDENTIAL_PATHS = [
   "/request-password-reset",
   SEND_SIGN_IN_CODE_PATH,
   CODE_SIGN_IN_PATH,
+  VERIFY_EMAIL_CODE_PATH,
 ] as const;
 
 /** Sign-in codes are short-lived, single use and hashed at rest. */
@@ -123,12 +147,28 @@ export const SIGN_IN_CODE_EXPIRES_IN_SECONDS = 10 * 60;
 
 /**
  * The email OTP plugin also exposes OTP email verification, password reset and
- * email change. Rakazo uses links for those, so only sign-in codes stay open.
+ * email change. Rakazo uses links for those, so only sign-in codes stay open,
+ * plus email verification codes when the deployment verifies addresses by code.
  */
-function isUnusedEmailCodePath(path: string, body: { type?: unknown } | undefined): boolean {
-  if (path === SEND_SIGN_IN_CODE_PATH) return body?.type !== "sign-in";
+function isUnusedEmailCodePath(
+  path: string,
+  body: { type?: unknown } | undefined,
+  verificationCodes = false,
+): boolean {
+  if (path === SEND_SIGN_IN_CODE_PATH)
+    return !(
+      body?.type === "sign-in" ||
+      (verificationCodes && body?.type === "email-verification")
+    );
+  if (verificationCodes && path === VERIFY_EMAIL_CODE_PATH) return false;
   return path.startsWith("/email-otp/") || path === "/forget-password/email-otp";
 }
+
+/** Better Auth's own code for a password sign-in refused until the address is verified. */
+export const EMAIL_NOT_VERIFIED_CODE = "EMAIL_NOT_VERIFIED";
+
+/** New email+password signups per address: a handful per hour, not a farm. */
+export const SIGN_UP_RATE_RULE = { window: 60 * 60, max: 5 } as const;
 
 /**
  * The only header Better Auth reads a client IP from. The API sets it from the socket peer and its
@@ -156,6 +196,7 @@ export function authRateLimitOptions(nodeEnv = process.env.NODE_ENV) {
     storage: "database" as const,
     customRules: {
       ...Object.fromEntries(CREDENTIAL_PATHS.map((path) => [path, rule])),
+      "/sign-up/email": { ...SIGN_UP_RATE_RULE },
       "/request-account-deletion": { window: 600, max: 3 },
       "/request-identity-code": { window: 600, max: 3 },
       "/confirm-identity": rule,
@@ -170,6 +211,8 @@ export function authRateLimitOptions(nodeEnv = process.env.NODE_ENV) {
 export function createAuth(prisma: PrismaClient, env: AuthEnv) {
   if (env.passwordAuth === false && !env.oidc && !env.apple)
     throw new Error("Password auth requires OIDC or Sign in with Apple when disabled");
+  if ((env.requireEmailVerification || env.emailVerificationCodes) && !env.email)
+    throw new Error("Email verification requires an email provider");
   // A failed lookup still sends the email, in the asking browser's language.
   const emailLocaleOf: EmailLocaleOf = async (account, headers) => {
     try {
@@ -233,6 +276,10 @@ export function createAuth(prisma: PrismaClient, env: AuthEnv) {
   };
   // SSO-only deployments keep every email credential closed, codes included.
   const emailCodeSignIn = Boolean(env.email) && env.passwordAuth !== false;
+  const verificationCodes = emailCodeSignIn && env.emailVerificationCodes === true;
+  const verificationRequired = env.requireEmailVerification === true && env.passwordAuth !== false;
+  // Bound after betterAuth() returns; codes are minted through the plugin's own route.
+  let sendVerificationCode: ((email: string, headers?: Headers) => Promise<void>) | undefined;
   // SSO-only deployments keep the identity provider as the only way in.
   const relyingParty =
     env.passwordAuth === false
@@ -302,22 +349,29 @@ export function createAuth(prisma: PrismaClient, env: AuthEnv) {
     },
     emailVerification: {
       // Open signups get a session at once; the link only marks the address verified.
+      // With required verification the signup gets no session until the code is confirmed.
       sendOnSignUp: Boolean(env.email),
       sendOnSignIn: true,
-      autoSignInAfterVerification: false,
-      sendVerificationEmail: env.email
-        ? async ({ user, url }, request) => {
-            const verificationUrl = new URL(url);
-            verificationUrl.searchParams.set(
-              "callbackURL",
-              new URL("/sign-in", env.webOrigin).href,
-            );
-            const locale = await emailLocaleOf({ id: user.id }, request?.headers);
-            await env.email!.send(
-              await verificationEmail(user.email, verificationUrl.href, locale),
-            );
+      // A confirmed code proves the mailbox like a sign-in code, so it signs the app in.
+      autoSignInAfterVerification: verificationCodes,
+      sendVerificationEmail: verificationCodes
+        ? async ({ user }, request) => {
+            // Inside the cooldown the earlier code stays valid, so nothing is sent.
+            await sendVerificationCode?.(user.email, request?.headers);
           }
-        : undefined,
+        : env.email
+          ? async ({ user, url }, request) => {
+              const verificationUrl = new URL(url);
+              verificationUrl.searchParams.set(
+                "callbackURL",
+                new URL("/sign-in", env.webOrigin).href,
+              );
+              const locale = await emailLocaleOf({ id: user.id }, request?.headers);
+              await env.email!.send(
+                await verificationEmail(user.email, verificationUrl.href, locale),
+              );
+            }
+          : undefined,
     },
     user: {
       validateUserInfo: async ({ user, source }, ctx) => {
@@ -418,6 +472,7 @@ export function createAuth(prisma: PrismaClient, env: AuthEnv) {
       ),
       identityConfirmation(env.email, emailLocaleOf),
       credentialEmailRateLimit(prisma),
+      ...(emailCodeSignIn ? [emailCodeCooldown(prisma)] : []),
       ...(discovery ? [discovery.plugin] : []),
       ...(emailCodeSignIn
         ? [
@@ -426,7 +481,16 @@ export function createAuth(prisma: PrismaClient, env: AuthEnv) {
               expiresIn: SIGN_IN_CODE_EXPIRES_IN_SECONDS,
               allowedAttempts: 3,
               storeOTP: "hashed",
-              sendVerificationOTP: async ({ email, otp }, ctx) => {
+              sendVerificationOTP: async ({ email, otp, type }, ctx) => {
+                if (type === "email-verification") {
+                  // Same answer for every address; only an unverified account gets mail.
+                  void (async () => {
+                    const found = await ctx?.context.internalAdapter.findUserByEmail(email);
+                    if (!found || found.user.emailVerified) return;
+                    await env.email?.send(verificationCodeEmail(email, otp));
+                  })().catch((error) => env.onEmailError?.(error));
+                  return;
+                }
                 // Like password reset, do not wait on delivery: a refused address
                 // answers at once, so waiting would reveal which addresses are admitted.
                 void emailLocaleOf({ email }, ctx?.headers)
@@ -518,8 +582,12 @@ export function createAuth(prisma: PrismaClient, env: AuthEnv) {
               : null;
           if (user && !user.emailVerified) await revokeUnprovenCredentials(prisma, user.id);
         }
-        if (isUnusedEmailCodePath(ctx.path, ctx.body)) throw new APIError("NOT_FOUND");
-        if (ctx.path === SEND_SIGN_IN_CODE_PATH || ctx.path === CODE_SIGN_IN_PATH) {
+        if (isUnusedEmailCodePath(ctx.path, ctx.body, verificationCodes))
+          throw new APIError("NOT_FOUND");
+        if (
+          (ctx.path === SEND_SIGN_IN_CODE_PATH && ctx.body?.type === "sign-in") ||
+          ctx.path === CODE_SIGN_IN_PATH
+        ) {
           // A code for an unknown address creates an account, so it passes the
           // same registration policy as password signup. A refused address is
           // answered like any other so replies do not reveal which accounts exist.
@@ -564,6 +632,7 @@ export function createAuth(prisma: PrismaClient, env: AuthEnv) {
         } else if (policy) {
           requireEmailVerification = policy.allowlist.length > 0;
         }
+        if (policy && verificationRequired) requireEmailVerification = true;
         const { findSession, updateUser } = ctx.context.internalAdapter;
         // Return a request-local override; mutating the shared auth options
         // would leak a concurrent request's policy into another signup.
@@ -672,6 +741,20 @@ export function createAuth(prisma: PrismaClient, env: AuthEnv) {
               throw new APIError("FORBIDDEN", {
                 code: "EMAIL_VERIFICATION_REQUIRED",
                 message: "Email verification required",
+              });
+            }
+            // Every new session of an unverified account waits for the code, whichever route
+            // asked (password, passkey). Social sign-in (Apple) proves the address at the
+            // provider, and a password change keeps the caller's own device signed in.
+            if (
+              verificationRequired &&
+              !user.emailVerified &&
+              !isSocialSignIn(ctx?.path) &&
+              !replacedSession(ctx)
+            ) {
+              throw new APIError("FORBIDDEN", {
+                code: EMAIL_NOT_VERIFIED_CODE,
+                message: "Email not verified",
               });
             }
             // Only admitted sessions provision a workspace; never assign administration.
@@ -812,8 +895,23 @@ export function createAuth(prisma: PrismaClient, env: AuthEnv) {
     },
   });
   authContext = auth.$context;
+  if (verificationCodes) {
+    sendVerificationCode = async (email, headers) => {
+      try {
+        await auth.api.sendVerificationOTP({
+          body: { email, type: "email-verification" },
+          headers: headers ?? new Headers(),
+        });
+      } catch (error) {
+        // A second request inside the cooldown keeps the code already mailed.
+        if (error instanceof APIError && error.body?.code === EMAIL_CODE_COOLDOWN_CODE) return;
+        throw error;
+      }
+    };
+  }
   return Object.assign(auth, {
     emailCodeSignIn,
+    emailVerificationCodes: verificationCodes,
     /** Encrypts OAuth tokens stored before encryption was enabled. Safe to rerun. */
     encryptStoredOAuthTokens: async () => encryptStoredOAuthTokens(prisma, await tokenKey()),
     ssoAvailability: () => discovery?.availability(),
@@ -950,6 +1048,10 @@ export function loopbackTwinOrigins(origin: string): string[] {
  */
 export function isBlockedAuthPath(path: string): boolean {
   return path.startsWith("/organization");
+}
+
+function isSocialSignIn(path: string | undefined): boolean {
+  return path === "/sign-in/social" || Boolean(path?.startsWith("/callback/"));
 }
 
 function isOidcCallback(
