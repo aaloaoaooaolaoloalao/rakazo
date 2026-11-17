@@ -178,14 +178,14 @@ export const MessageBlock = z.discriminatedUnion("kind", [
     name: z.string(),
     description: z.string(),
     logo: z.string().nullable(),
-    status: z.enum(["pending", "connected"]),
+    status: z.enum(["pending", "connected", "dismissed"]),
   }),
   z.object({
     kind: z.literal("connect"),
     name: z.string(),
     initial: z.string(),
     color: z.string(),
-    status: z.enum(["pending", "connected"]),
+    status: z.enum(["pending", "connected", "dismissed"]),
   }),
   z.object({
     kind: z.literal("computer"),

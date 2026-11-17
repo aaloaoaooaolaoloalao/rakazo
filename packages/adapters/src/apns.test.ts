@@ -54,8 +54,42 @@ describe("apns", () => {
     );
     expect(payload.aps.alert.body).toBe("הודעה חדשה");
     expect(payload.aps["thread-id"]).toBe("thread");
+    expect(payload.aps["mutable-content"]).toBe(1);
     expect(payload.threadId).toBe("thread");
+    expect(payload.sender).toBeUndefined();
     expect(apnsAlertBody("הסוכן סיים")).toBe("הסוכן סיים");
+  });
+
+  it("carries the agent portrait so the notification extension can show it", () => {
+    const payload = buildApnsPayload(
+      {
+        kind: "completion",
+        title: "Nova",
+        body: "הסוכן סיים",
+        botId: "bot",
+        threadId: "thread",
+        sender: { botId: "bot", name: "Nova", avatar: "abc" },
+      },
+      "space",
+    );
+    expect(payload.aps["mutable-content"]).toBe(1);
+    expect(payload.sender).toEqual({ botId: "bot", name: "Nova", avatar: "abc" });
+  });
+
+  it("drops an avatar that would make APNs reject the payload", () => {
+    const payload = buildApnsPayload(
+      {
+        kind: "completion",
+        title: "Nova",
+        body: "הסוכן סיים",
+        botId: "bot",
+        threadId: "thread",
+        sender: { botId: "bot", name: "Nova", avatar: "a".repeat(5000) },
+      },
+      "space",
+    );
+    expect(payload.sender).toEqual({ botId: "bot", name: "Nova" });
+    expect(Buffer.byteLength(JSON.stringify(payload))).toBeLessThanOrEqual(4096);
   });
 
   it("drops a dead device and retries a server error once", () => {

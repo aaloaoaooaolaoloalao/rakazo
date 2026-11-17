@@ -114,23 +114,41 @@ export function apnsAlertBody(body: string): string {
   return trimmed.slice(0, MAX_BODY);
 }
 
+const APNS_PAYLOAD_LIMIT = 4096;
+
 export function buildApnsPayload(message: NotificationMessage, spaceId: string) {
-  return {
+  const sender = message.sender
+    ? {
+        botId: message.sender.botId,
+        name: message.sender.name.slice(0, MAX_TITLE),
+        ...(message.sender.avatar ? { avatar: message.sender.avatar } : {}),
+      }
+    : undefined;
+  const payload = {
     aps: {
       alert: {
         title: message.title.slice(0, MAX_TITLE),
         body: apnsAlertBody(message.body),
       },
       badge: message.badge,
-      sound: "default",
+      sound: "default" as const,
       "thread-id": message.threadId,
+      // Without this the notification service extension never runs, so the
+      // banner keeps the app icon instead of the agent's portrait.
+      "mutable-content": 1 as const,
     },
     kind: message.kind,
     botId: message.botId,
     threadId: message.threadId,
+    ...(sender ? { sender } : {}),
     ...(spaceId ? { spaceId } : {}),
     ...(message.groupId ? { groupId: message.groupId } : {}),
   };
+  if (!sender?.avatar || Buffer.byteLength(JSON.stringify(payload)) <= APNS_PAYLOAD_LIMIT) {
+    return payload;
+  }
+  const { avatar: _avatar, ...withoutAvatar } = sender;
+  return { ...payload, sender: withoutAvatar };
 }
 
 export type ApnsFailure = "drop" | "retry" | "ignore";

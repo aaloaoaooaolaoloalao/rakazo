@@ -1187,6 +1187,44 @@ export async function answerRunInput(
   return true;
 }
 
+const WAITING_DISMISS_USER_MESSAGES = 2;
+
+function isDismissableWaitingBlock(block: MessageBlock): boolean {
+  switch (block.kind) {
+    case "app_connect":
+    case "connect":
+      return (block.status ?? "pending") === "pending";
+    case "mcp_approval":
+      return block.status !== "connected" && block.status !== "dismissed";
+    case "choice":
+      return !block.answerId;
+    case "ask":
+      return (
+        (block.status ?? "pending") !== "answered" &&
+        !isSecretAskBlock(block) &&
+        !isApprovalAskBlock(block)
+      );
+    default:
+      return false;
+  }
+}
+
+function dismissWaitingBlock(block: MessageBlock, answer: string): MessageBlock {
+  switch (block.kind) {
+    case "app_connect":
+    case "connect":
+      return { ...block, status: "dismissed" };
+    case "mcp_approval":
+      return { ...block, status: "dismissed" };
+    case "choice":
+      return { ...block, answerId: "_dismissed" };
+    case "ask":
+      return { ...block, status: "answered", answer: "", dismissed: true as const };
+    default:
+      return block;
+  }
+}
+
 /** The caller holds the thread row lock acquired while accepting the new user message. */
 export async function retireWaitingQuestionInTransaction(
   tx: Prisma.TransactionClient,
@@ -1203,17 +1241,17 @@ export async function retireWaitingQuestionInTransaction(
   };
   const run = await tx.run.findFirst({ where, select: { taskId: true, userId: true } });
   if (!run) return false;
-  const messages = await tx.message.findMany({
+  const botMessages = await tx.message.findMany({
     where: { threadId: input.threadId, runId: input.runId, role: "bot" },
-    select: { id: true, blocks: true },
+    select: { id: true, seq: true, blocks: true },
+    orderBy: { seq: "asc" },
   });
   const questions = [];
-  for (const message of messages) {
+  let anchorSeq: number | undefined;
+  for (const message of botMessages) {
     const parsed = MessageBlockSchema.array().safeParse(message.blocks);
     if (!parsed.success) return false;
-    const pending = parsed.data.filter(
-      (block) => block.kind === "ask" && block.status !== "answered",
-    );
+    const pending = parsed.data.filter(isDismissableWaitingBlock);
     // Never implicitly dismiss credentials or authorize an external effect, even on a mixed card.
     if (
       pending.some(
@@ -1222,15 +1260,24 @@ export async function retireWaitingQuestionInTransaction(
     )
       return false;
     if (pending.length) {
+      anchorSeq = anchorSeq === undefined ? message.seq : Math.min(anchorSeq, message.seq);
       questions.push({
         id: message.id,
         blocks: parsed.data.map((block) =>
-          pending.includes(block) ? { ...block, status: "answered" as const, answer } : block,
+          isDismissableWaitingBlock(block) ? dismissWaitingBlock(block, answer) : block,
         ),
       });
     }
   }
-  if (!questions.length) return false;
+  if (!questions.length || anchorSeq === undefined) return false;
+  const userMessagesSincePrompt = await tx.message.count({
+    where: {
+      threadId: input.threadId,
+      role: "user",
+      seq: { gt: anchorSeq },
+    },
+  });
+  if (userMessagesSincePrompt < WAITING_DISMISS_USER_MESSAGES) return false;
   const now = new Date();
   const retired = await tx.run.updateMany({
     where,

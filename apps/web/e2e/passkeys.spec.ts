@@ -1,4 +1,5 @@
 import { test as base, expect } from "@playwright/test";
+import { passkeysEnabled } from "../src/lib/passkeys-flag";
 import { captureScreenshot, completeOnboarding, openUserSettings, signup } from "./helpers";
 
 // Loopback deployments use the WebAuthn relying party `localhost` (IP hosts cannot hold
@@ -11,7 +12,9 @@ const test = base.extend({
   },
 });
 
-test("adds a passkey after signup and signs in with it", async ({ page }, testInfo) => {
+const passkeyTest = passkeysEnabled ? test : test.skip;
+
+passkeyTest("adds a passkey after signup and signs in with it", async ({ page }, testInfo) => {
   const cdp = await page.context().newCDPSession(page);
   await cdp.send("WebAuthn.enable");
   const { authenticatorId } = await cdp.send("WebAuthn.addVirtualAuthenticator", {

@@ -65,7 +65,7 @@ export async function connectApp(
         (message.blocks as MessageBlock[]).some(
           (candidate) =>
             matchesAppConnection(candidate, entry.connectorId, entry.slug) &&
-            candidate.status === "pending",
+            (candidate.status ?? "pending") === "pending",
         ),
       )
     )

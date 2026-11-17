@@ -1,4 +1,5 @@
 import { describe, expect, it, vi } from "vitest";
+import { passkeysEnabled } from "./passkeys-flag";
 import { conditionalPasskeyAvailable, passkeyErrorText, passkeysSupported } from "./passkeys";
 
 function browser(host: string, available: boolean | Error = true) {
@@ -12,6 +13,12 @@ function browser(host: string, available: boolean | Error = true) {
     },
   };
 }
+
+describe("passkeysEnabled", () => {
+  it("stays off until the deployment has a permanent domain", () => {
+    expect(passkeysEnabled).toBe(false);
+  });
+});
 
 describe("passkeysSupported", () => {
   it("needs WebAuthn, a matching relying party, and a platform authenticator", async () => {

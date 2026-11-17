@@ -3,6 +3,7 @@ import { hostMatchesPasskeyRpId } from "@rakazo/core";
 import { WebAuthnAbortService } from "@simplewebauthn/browser";
 import { useEffect, useState, useSyncExternalStore } from "react";
 import { fetchAuthCapabilities } from "./auth-capabilities";
+import { passkeysEnabled } from "./passkeys-flag";
 import type { RakazoDesktop } from "./desktop";
 import { desktopBridge } from "./desktop";
 import { authErrorText } from "./user-error";
@@ -60,6 +61,7 @@ export async function passkeysSupported(
 export function usePasskeysSupported(): boolean {
   const [supported, setSupported] = useState(false);
   useEffect(() => {
+    if (!passkeysEnabled) return;
     let active = true;
     void fetchAuthCapabilities()
       .then((capabilities) => passkeysSupported(capabilities.passkeyRpId))
@@ -71,7 +73,7 @@ export function usePasskeysSupported(): boolean {
       active = false;
     };
   }, []);
-  return supported;
+  return passkeysEnabled && supported;
 }
 
 let passkeysVersion = 0;
