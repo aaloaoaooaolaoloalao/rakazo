@@ -95,7 +95,7 @@ test("narrow settings reveals the active section and offers scroll controls", as
   await expect(last).toHaveAttribute("aria-current", "page");
 });
 
-test("settings shell is two-pane and deep-links Models Memory Voice Usage", async ({
+test("settings shell is two-pane and deep-links Memory and Usage", async ({
   page,
 }, testInfo) => {
   const stamp = Date.now();
@@ -156,12 +156,8 @@ test("settings shell is two-pane and deep-links Models Memory Voice Usage", asyn
   await captureScreenshot(page, testInfo, "settings-general-delete-confirmation");
   await deleteAccount.click();
 
-  await settings.getByTestId("settings-nav-models").click();
-  await expect(settings).toHaveAttribute("data-settings-section", "models");
-  await expect(settings.getByTestId("model-settings")).toBeVisible();
-  await expect(settings.getByTestId("model-role-main")).toBeVisible();
-  await expect(settings.getByTestId("model-role-approval")).toBeVisible();
-  await captureScreenshot(page, testInfo, "settings-shell-models");
+  await expect(settings.getByTestId("settings-nav-models")).toHaveCount(0);
+  await expect(settings.getByTestId("settings-nav-voice")).toHaveCount(0);
 
   await settings.getByTestId("settings-nav-memory").click();
   await expect(settings).toHaveAttribute("data-settings-section", "memory");
@@ -177,18 +173,6 @@ test("settings shell is two-pane and deep-links Models Memory Voice Usage", asyn
   await memory.getByRole("button", { name: "Advanced", exact: true }).click();
   await expect(memory.getByRole("button", { name: "Recall only" })).toBeVisible();
   await captureScreenshot(page, testInfo, "settings-shell-memory-serenity-advanced");
-
-  await settings.getByTestId("settings-nav-voice").click();
-  await expect(settings).toHaveAttribute("data-settings-section", "voice");
-  await expect(settings.getByTestId("voice-settings")).toBeVisible();
-  await captureScreenshot(page, testInfo, "settings-shell-voice");
-  const voice = settings.getByTestId("voice-settings");
-  await chooseOption(voice.getByLabel("Provider", { exact: true }), "xAI");
-  await expect(voice.getByLabel("API key", { exact: true })).toBeVisible();
-  await captureScreenshot(page, testInfo, "settings-shell-voice-xai");
-
-  await page.getByRole("button", { name: "Close voice settings" }).click();
-  await expect(page.getByTestId("user-settings")).toHaveCount(0);
 
   await openUserSettings(page, "usage");
   await expect(page.getByTestId("user-settings")).toHaveAttribute("data-settings-section", "usage");

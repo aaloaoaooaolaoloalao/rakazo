@@ -75,7 +75,7 @@ test("signup suggests a fix for a mistyped email domain", async ({ page }, testI
   await fix.click();
   await expect(page.getByLabel("Email")).toHaveValue("typo@gmail.com");
   await page.getByRole("button", { name: "Create account", exact: true }).click();
-  await expect(page.getByRole("heading", { name: "Check your email" })).toBeVisible();
+  await expect(page.getByRole("heading", { name: "Verify your email" })).toBeVisible();
   expect(signups).toBe(1);
 });
 

@@ -12,7 +12,7 @@ import {
 
 function fakePrisma(count = 0, existing = false) {
   return {
-    // Looks like a TransactionClient: $queryRaw present, no $transaction.
+    // Looks like a TransactionClient: $queryRaw present, no $connect.
     $queryRaw: vi.fn(async () => [{ lock: "1" }]),
     computer: {
       findUnique: vi.fn(async () => (existing ? { id: "existing" } : null)),
@@ -341,6 +341,17 @@ describe("ensureComputerRecord", () => {
       ensureComputerRecord(prisma, { ...baseInput, mode: "team" }),
     ).resolves.toMatchObject({ id: "existing" });
     expect(prisma.computer.upsert).not.toHaveBeenCalled();
+  });
+
+  it("reuses the team computer when the transaction client still exposes $transaction", async () => {
+    delete process.env.SANDBOX_MAX_COMPUTERS_PER_USER;
+    const prisma = fakePrisma(0, true) as PrismaClient & { $transaction: ReturnType<typeof vi.fn> };
+    prisma.$transaction = vi.fn();
+    await expect(
+      ensureComputerRecord(prisma, { ...baseInput, mode: "team" }),
+    ).resolves.toMatchObject({ id: "existing" });
+    expect(prisma.computer.upsert).not.toHaveBeenCalled();
+    expect(prisma.$transaction).not.toHaveBeenCalled();
   });
 
   it("serializes parallel creates so concurrent callers cannot exceed the cap", async () => {

@@ -3,6 +3,7 @@ import { createServer } from "node:http";
 import type { AddressInfo } from "node:net";
 import type { Route } from "@playwright/test";
 import { expect, test } from "@playwright/test";
+import { PRODUCT_UI } from "../../src/product-ui";
 import type { ModelRoleSettings } from "@rakazo/contracts";
 import {
   captureScreenshot,
@@ -22,6 +23,13 @@ import {
 const LOCAL_MODEL_ID = "rakazo-e2e-local";
 const SECOND_MODEL_ID = "rakazo-e2e-second";
 const LOCAL_MODEL_REPLY = "OpenAI-compatible endpoint verified end to end.";
+
+test.beforeEach(() => {
+  test.skip(
+    PRODUCT_UI.hideUserModelSettings,
+    "SparkAI hides Models in settings. The panels stay in the tree for when that flag is off.",
+  );
+});
 
 test.afterEach(async ({ page }) => {
   // Finish intercepted responses before the browser context is disposed.

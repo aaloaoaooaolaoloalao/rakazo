@@ -1,5 +1,6 @@
 import type { Page } from "@playwright/test";
 import { expect, test } from "@playwright/test";
+import { PRODUCT_UI } from "../../src/product-ui";
 import {
   captureScreenshot,
   completeOnboarding,
@@ -24,6 +25,10 @@ for (const surface of ["settings", "onboarding"] as const) {
     test(`${surface} header ${action} clears discovered models and ignores an in-flight result`, async ({
       page,
     }, testInfo) => {
+      test.skip(
+        surface === "settings" && PRODUCT_UI.hideUserModelSettings,
+        "SparkAI hides Models in settings.",
+      );
       if (surface === "onboarding") {
         await page.route("**/rpc/me", async (route) => {
           const response = await route.fetch();

@@ -1,5 +1,6 @@
 import { expect, test } from "@playwright/test";
 import { AI_DISCLOSURE_VERSION, AI_PRIVACY_URL } from "@rakazo/contracts";
+import { PRODUCT_UI } from "../../src/product-ui";
 import {
   captureScreenshot,
   chooseOption,
@@ -12,6 +13,10 @@ import {
 test("a self-hosted voice connection offers a separate transcription server", async ({
   page,
 }, testInfo) => {
+  test.skip(
+    PRODUCT_UI.hideUserVoiceSettings,
+    "SparkAI hides Voice in settings. The panel stays in the tree for when that flag is off.",
+  );
   // The screenshot never submits the form or contacts a speech server.
   const stamp = Date.now();
   await signup(page, `voice-stt-${stamp}@rakazo.test`, "password12", "Voice Transcription Preview");

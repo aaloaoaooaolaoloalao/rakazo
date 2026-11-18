@@ -407,7 +407,13 @@ async function ensureComputerRecordWithQuota(
 }
 
 function isTransactionClient(prisma: ComputerClient): prisma is ComputerTx {
-  return typeof prisma.$queryRaw === "function" && typeof prisma.$transaction !== "function";
+  // Prisma 7 still puts $transaction on an interactive transaction client. It
+  // removes $connect (ITXClientDenyList). A root client has both, so the
+  // absence of $connect is what marks the open transaction.
+  return (
+    typeof prisma.$queryRaw === "function" &&
+    typeof (prisma as { $connect?: unknown }).$connect !== "function"
+  );
 }
 
 export async function ensureComputerRecord(
