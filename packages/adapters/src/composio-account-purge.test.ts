@@ -1,6 +1,6 @@
 import { describe, expect, it } from "vitest";
-import { ComposioConnector } from "./composio-connector.js";
-import { FakeComposioClient as FakeClient } from "./composio-fake.js";
+import { ComposioConnector } from "./providers/integration/composio/composio-connector.js";
+import { FakeComposioClient as FakeClient } from "./providers/integration/composio/composio-fake.js";
 
 function connector(fake: FakeClient) {
   return new ComposioConnector({ client: fake, apiKey: "fake-key-for-http-fallback" });

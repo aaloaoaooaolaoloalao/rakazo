@@ -1,4 +1,4 @@
-import { errorStatus } from "./retry-policy.js";
+import { errorStatus } from "./primitives/retry-policy.js";
 
 /** Opens after this many retryable provider failures inside the window. */
 const FAILURES_TO_OPEN = 5;

@@ -7,10 +7,10 @@ import {
   autoProvisionMaxComputersPerUser,
   autoProvisionNewUsersEnabled,
 } from "@rakazo/core";
-import type { PrismaClient } from "./client.js";
-import { resolveMaxComputersPerUser } from "./computers.js";
-import { createRepos } from "./repos.js";
-import { runAsTenant } from "./row-security.js";
+import { createRepos } from "./bots/bot-repository.js";
+import { resolveMaxComputersPerUser } from "./computers/computers.js";
+import type { PrismaClient } from "./database/client.js";
+import { runAsTenant } from "./database/row-security.js";
 
 export type EnsureAutoProvisionResult = {
   /** A new default bot was created in this call. */

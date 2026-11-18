@@ -10,7 +10,7 @@ import {
 import type { PrismaClient } from "@rakazo/db";
 import { recordSecurityEvent, takeRateBucket } from "@rakazo/db";
 import type { Context } from "hono";
-import { requestClientIp } from "./client-ip.js";
+import { requestClientIp } from "./http/client-ip.js";
 
 type RateDb = Pick<PrismaClient, "apiRateBucket">;
 

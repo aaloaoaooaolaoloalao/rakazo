@@ -1,19 +1,19 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
-import type * as ComputerLifecycleModule from "./computer-lifecycle.js";
-import { createRunExecutor } from "./executor.js";
-import type * as RunLifecycleModule from "./run-lifecycle.js";
+import type * as ComputerLifecycleModule from "./computers/computer-lifecycle.js";
+import { createRunExecutor } from "./runs/executor/executor.js";
+import type * as RunLifecycleModule from "./runs/lifecycle/run-lifecycle.js";
 
 const mocks = vi.hoisted(() => ({
   acquire: vi.fn(),
   failRunBeforeTurn: vi.fn(),
 }));
 
-vi.mock("./computer-lifecycle.js", async (importOriginal) => ({
+vi.mock("./computers/computer-lifecycle.js", async (importOriginal) => ({
   ...(await importOriginal<typeof ComputerLifecycleModule>()),
   acquireComputerExecutionLease: mocks.acquire,
 }));
 
-vi.mock("./run-lifecycle.js", async (importOriginal) => ({
+vi.mock("./runs/lifecycle/run-lifecycle.js", async (importOriginal) => ({
   ...(await importOriginal<typeof RunLifecycleModule>()),
   failRunBeforeTurn: mocks.failRunBeforeTurn,
 }));

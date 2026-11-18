@@ -1,5 +1,5 @@
-import type { PrismaClient } from "./generated/prisma/client.js";
-import { runAsSystem } from "./row-security.js";
+import type { PrismaClient } from "./database/client.js";
+import { runAsSystem } from "./database/row-security.js";
 
 type RateDb = Pick<PrismaClient, "apiRateBucket">;
 

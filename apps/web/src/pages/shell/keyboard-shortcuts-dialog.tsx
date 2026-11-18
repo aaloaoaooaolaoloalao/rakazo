@@ -1,6 +1,7 @@
 import { useLingui } from "@lingui/react/macro";
 import { Dialog, DialogContent, DialogHeader, DialogTitle, Kbd, KbdGroup } from "@rakazo/ui-web";
 import type { ShortcutHost } from "./shell-shortcuts";
+import { quoteShortcutKeys } from "./shell-shortcuts";
 
 type Row = { label: string; keys: string[][] };
 
@@ -29,6 +30,7 @@ export function KeyboardShortcutsDialog({
     host.desktop && { label: t`Search bots`, keys: [[mod, shift, "F"]] },
     { label: t`Toggle sidebar`, keys: [[mod, "B"]] },
     { label: t`Focus message`, keys: [[mod, "I"]] },
+    { label: t`Quote selection`, keys: [quoteShortcutKeys(host)] },
     dictation && { label: t`Dictate`, keys: [[mod, "D"]] },
     { label: t`Chat details`, keys: [[mod, shift, ","]] },
     { label: t`Connect apps`, keys: [[mod, shift, "M"]] },
@@ -74,7 +76,10 @@ export function KeyboardShortcutsDialog({
           {rows
             .filter((row): row is Row => row !== false)
             .map((row) => (
-              <div key={row.label} className="flex items-center justify-between gap-4 py-2 text-sm">
+              <div
+                key={row.label}
+                className="flex items-center justify-between gap-4 py-2 text-body"
+              >
                 <dt className="text-foreground">{row.label}</dt>
                 <dd className="flex shrink-0 items-center gap-2">
                   {row.keys.map((chord) => (

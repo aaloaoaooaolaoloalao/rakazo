@@ -1,7 +1,7 @@
 import { builtinModels } from "@earendil-works/pi-ai/providers/all";
 import { describe, expect, it } from "vitest";
-import { listPiCatalog } from "./pi-models.js";
-import { resolveRuntimeModel } from "./pi-runtime-models.js";
+import { listPiCatalog } from "./runtime/pi/models/pi-models.js";
+import { resolveRuntimeModel } from "./runtime/pi/pi-runtime-models.js";
 import {
   applyMistralImageLimit,
   MISTRAL_MAX_IMAGES_PER_PROMPT,

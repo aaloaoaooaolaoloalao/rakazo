@@ -3,7 +3,7 @@ import {
   EmailVerificationRequiredError,
   workerAgentsRequireVerifiedEmail,
 } from "@rakazo/core";
-import type { PrismaClient } from "./client.js";
+import type { PrismaClient } from "./database/client.js";
 
 export { EmailVerificationRequiredError };
 
