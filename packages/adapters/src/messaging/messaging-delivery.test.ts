@@ -1922,7 +1922,7 @@ describe("deliverRun for team chat", () => {
     expect(t.world.externalMessages[0]!.status).toBe("running");
   });
 
-  const failure = "Assistant could not complete that request. Open Rakazo for details.";
+  const failure = "Assistant could not complete that request. Open SparkAI for details.";
   it.each([
     ["a run that failed", "direct", "failed", [["external-message:em-1:failure", failure]]],
     [
@@ -2063,7 +2063,7 @@ describe("delegated team-chat replies", () => {
       [
         "team-chat-run:run-c",
         "slack:C1:1700.1",
-        "Assistant could not complete the delegated request. Open Rakazo for details.",
+        "Assistant could not complete the delegated request. Open SparkAI for details.",
         "sent",
       ],
     ]);

@@ -95,6 +95,8 @@ export const BotAvatar = memo(function BotAvatar({
     [effectiveId, parsed.color],
   );
 
+  const live = useBotAvatarActivity(effectiveId, status);
+
   if (parsed.isImage && parsed.imageUrl) {
     return (
       <div
@@ -132,7 +134,6 @@ export const BotAvatar = memo(function BotAvatar({
     );
   }
 
-  const live = useBotAvatarActivity(effectiveId, status);
   return (
     <SparkDotAvatar
       shape={sparkShape(parsed.shapeIndex, effectiveId)}

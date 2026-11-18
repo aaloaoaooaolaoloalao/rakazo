@@ -10,7 +10,7 @@ describe("GroupAvatar", () => {
 
   it("renders single BotAvatar when 1 member", () => {
     const html = renderToString(<GroupAvatar members={[{ name: "Harry", color: "#8B5CF6" }]} />);
-    expect(html).toContain("rakazo-organic-avatar");
+    expect(html).toContain("data-spark-dots");
   });
 
   it("renders 2 overlapping bot avatars for 2 members", () => {
@@ -22,9 +22,9 @@ describe("GroupAvatar", () => {
         ]}
       />,
     );
-    const count = (html.match(/data-working=/g) || []).length;
+    const count = (html.match(/data-spark-dots=/g) || []).length;
     expect(count).toBe(2);
-    expect(html).toContain('data-working="false"');
+    expect(html).toContain('data-mood="idle"');
   });
 
   it("renders a working member inside a group avatar", () => {
@@ -36,8 +36,8 @@ describe("GroupAvatar", () => {
         ]}
       />,
     );
-    expect(html).toContain('data-working="true"');
-    expect(html).toContain("rakazo-organic-avatar");
+    expect(html).toContain('data-mood="working"');
+    expect(html).toContain("data-spark-dots");
   });
 
   it("renders 3 mini bot avatars for 3 members", () => {
@@ -50,7 +50,7 @@ describe("GroupAvatar", () => {
         ]}
       />,
     );
-    const count = (html.match(/data-working=/g) || []).length;
+    const count = (html.match(/data-spark-dots=/g) || []).length;
     expect(count).toBe(3);
   });
 

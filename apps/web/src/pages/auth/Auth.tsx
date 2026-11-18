@@ -707,9 +707,9 @@ export function AuthFrame({
             className="h-[74px] w-[74px] rounded-[22px]"
           />
           <h1 className="mb-2 mt-7 text-4xl font-medium tracking-tight">SparkAI</h1>
-          <p aria-live="polite" className="mb-9 text-base text-muted-foreground">
+          <h2 aria-live="polite" className="mb-9 text-base font-normal text-muted-foreground">
             {title}
-          </p>
+          </h2>
           {children}
         </form>
       </div>

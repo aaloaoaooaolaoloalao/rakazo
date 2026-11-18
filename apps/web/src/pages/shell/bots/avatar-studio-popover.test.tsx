@@ -77,17 +77,17 @@ describe("selectable bot icon sets", () => {
     await render("#10B981");
     await click("Customize bot avatar");
     expect(button("Original").getAttribute("aria-selected")).toBe("true");
-    expect(document.querySelector(".rakazo-organic-avatar")).not.toBeNull();
+    expect(document.querySelector(".spark-dot-avatar")).not.toBeNull();
     expect(changed).not.toHaveBeenCalled();
     await click("SparkAI");
     expect(changed).toHaveBeenLastCalledWith("#10B981", "rakazo");
-    expect(document.querySelector(".rakazo-logo-avatar")).not.toBeNull();
+    expect(document.querySelector(".spark-dot-avatar")).not.toBeNull();
     await render("#10B981", "rakazo", "reload");
     await click("Customize bot avatar");
     expect(button("SparkAI").getAttribute("aria-selected")).toBe("true");
     await click("Original");
     expect(changed).toHaveBeenLastCalledWith("#10B981", "organic");
-    expect(document.querySelector(".rakazo-organic-avatar")).not.toBeNull();
+    expect(document.querySelector(".spark-dot-avatar")).not.toBeNull();
     expect(button("wedge")).toBeDefined();
   });
 

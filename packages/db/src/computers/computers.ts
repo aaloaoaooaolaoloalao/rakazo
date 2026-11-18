@@ -321,18 +321,27 @@ async function upsertComputerRecord(
 }
 
 async function findExistingTeamComputer(
-  tx: ComputerTx,
+  db: ComputerDb & Partial<Pick<PrismaClient, "$queryRaw">>,
   userId: string,
   unifiedScopeKey: string,
 ) {
-  const byKey = await tx.computer.findUnique({
-    where: { scopeKey: unifiedScopeKey },
-  });
-  if (byKey) return byKey;
-  return tx.computer.findFirst({
-    where: { userId, scope: "team" },
-    orderBy: { createdAt: "asc" },
-  });
+  const find = async () => {
+    const byKey = await db.computer.findUnique({
+      where: { scopeKey: unifiedScopeKey },
+    });
+    if (byKey) return byKey;
+    return db.computer.findFirst({
+      where: { userId, scope: "team" },
+      orderBy: { createdAt: "asc" },
+    });
+  };
+  // A tenant transaction only sees the current Space. The one team computer may
+  // already live in another Space, and an upsert that cannot see it inserts a
+  // duplicate scope key.
+  const reason = "reuse the user's one team computer across Spaces";
+  return db.$queryRaw
+    ? runAsSystemInTransaction(db as Pick<PrismaClient, "$queryRaw">, reason, find)
+    : runAsSystem(reason, find);
 }
 
 /**
@@ -413,7 +422,13 @@ export async function ensureComputerRecord(
 ) {
   const limit = resolveMaxComputersPerUser();
   const scopeKey = computerScopeKey(input);
-  if (limit <= 0) return upsertComputerRecord(prisma, input, scopeKey);
+  if (limit <= 0) {
+    if (input.mode === "team" && isTransactionClient(prisma)) {
+      const existing = await findExistingTeamComputer(prisma, input.userId, scopeKey);
+      if (existing) return existing;
+    }
+    return upsertComputerRecord(prisma, input, scopeKey);
+  }
 
   // Cap is set: hold a per-user advisory lock across find + count + create so
   // concurrent creates for different spaces cannot both pass the check.

@@ -1243,7 +1243,7 @@ export class MessagingDelivery {
         ? teamChatResponseText(reply ? storedMessageBlocks(reply) : [], run.bot.name, ambient)
         : ambient
           ? ""
-          : `${run.bot.name} could not complete that request. Open Rakazo for details.`;
+          : `${run.bot.name} could not complete that request. Open SparkAI for details.`;
     const recorded = await this.deps.prisma.$transaction(async (tx) => {
       const claimed = await tx.externalMessage.updateMany({
         where: { id: message.id, status: "running" },
@@ -1295,7 +1295,7 @@ export class MessagingDelivery {
         : null;
     const body =
       run.status === "failed"
-        ? `${run.bot.name} could not complete the delegated request. Open Rakazo for details.`
+        ? `${run.bot.name} could not complete the delegated request. Open SparkAI for details.`
         : teamChatResponseText(reply ? storedMessageBlocks(reply) : [], run.bot.name, true);
     if (!body) return undefined;
     const lane = {

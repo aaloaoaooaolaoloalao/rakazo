@@ -3,9 +3,9 @@ export const AUTO_PROVISION_DEFAULT_BOT_SPAWN_KEY = "auto-provision:default";
 
 export type AutoProvisionEnv = NodeJS.ProcessEnv;
 
-/** Default on; set AUTO_PROVISION_NEW_USERS=false to disable. */
+/** Off unless AUTO_PROVISION_NEW_USERS=true. Onboarding creates the first agent. */
 export function autoProvisionNewUsersEnabled(env: AutoProvisionEnv = process.env): boolean {
-  return env.AUTO_PROVISION_NEW_USERS !== "false";
+  return env.AUTO_PROVISION_NEW_USERS === "true";
 }
 
 export function autoProvisionDefaultBotName(env: AutoProvisionEnv = process.env): string {

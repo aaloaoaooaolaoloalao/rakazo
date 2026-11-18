@@ -6,12 +6,9 @@ import {
 } from "./auto-provision.js";
 
 describe("autoProvisionNewUsersEnabled", () => {
-  it("defaults to enabled", () => {
-    expect(autoProvisionNewUsersEnabled({})).toBe(true);
-    expect(autoProvisionNewUsersEnabled({ AUTO_PROVISION_NEW_USERS: undefined })).toBe(true);
-  });
-
-  it("disables only when explicitly false", () => {
+  it("stays off until explicitly enabled", () => {
+    expect(autoProvisionNewUsersEnabled({})).toBe(false);
+    expect(autoProvisionNewUsersEnabled({ AUTO_PROVISION_NEW_USERS: undefined })).toBe(false);
     expect(autoProvisionNewUsersEnabled({ AUTO_PROVISION_NEW_USERS: "false" })).toBe(false);
     expect(autoProvisionNewUsersEnabled({ AUTO_PROVISION_NEW_USERS: "true" })).toBe(true);
   });

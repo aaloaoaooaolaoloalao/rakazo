@@ -334,6 +334,15 @@ describe("ensureComputerRecord", () => {
     expect(prisma.$queryRaw).not.toHaveBeenCalled();
   });
 
+  it("reuses the user's team computer across spaces when no cap is configured", async () => {
+    delete process.env.SANDBOX_MAX_COMPUTERS_PER_USER;
+    const prisma = fakePrisma(0, true);
+    await expect(
+      ensureComputerRecord(prisma, { ...baseInput, mode: "team" }),
+    ).resolves.toMatchObject({ id: "existing" });
+    expect(prisma.computer.upsert).not.toHaveBeenCalled();
+  });
+
   it("serializes parallel creates so concurrent callers cannot exceed the cap", async () => {
     process.env.SANDBOX_MAX_COMPUTERS_PER_USER = "1";
     const { prisma, state } = fakeSerializingPrisma(0);
