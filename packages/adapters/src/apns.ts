@@ -3,8 +3,9 @@ import { readFileSync } from "node:fs";
 import http2 from "node:http2";
 import type { AdapterContext, NotificationMessage, NotificationProvider } from "@rakazo/adapter-kit";
 import { getLogger } from "@rakazo/logging";
-import type { ExpoPushProvider } from "./expo-push.js";
-import type { PushTokenStore } from "./push-token-store.js";
+import type { ExpoPushProvider } from "./notifications/expo-push.js";
+import type { PushRecord, PushTokenStore } from "./notifications/push-token-store.js";
+import { credentialDigest } from "./secrets/credential-digest.js";
 
 const JWT_TTL_MS = 50 * 60_000;
 const MAX_TITLE = 100;
@@ -237,6 +238,14 @@ export async function postApns(input: {
   });
 }
 
+async function apnsRegistration(
+  tokens: PushTokenStore,
+  userId: string,
+): Promise<PushRecord | undefined> {
+  const records = await tokens.list(userId);
+  return records.find((record) => record.provider === "apns");
+}
+
 export class RoutedPushProvider implements NotificationProvider {
   constructor(
     private readonly expo: ExpoPushProvider,
@@ -249,8 +258,8 @@ export class RoutedPushProvider implements NotificationProvider {
 
   async send(message: NotificationMessage, context: AdapterContext): Promise<void> {
     try {
-      const record = await this.tokens.load(context.userId);
-      if (record?.provider === "apns") {
+      const record = await apnsRegistration(this.tokens, context.userId);
+      if (record) {
         await deliverApns(record, message, context, this.tokens);
         return;
       }
@@ -307,7 +316,7 @@ async function deliverApns(
     environment,
     suffix: tokenSuffix(record.token),
   });
-  if (action === "drop") await tokens.remove(context.userId);
+  if (action === "drop") await tokens.remove(context.userId, credentialDigest(record.token));
   return { status: result.status, reason: result.reason, apnsId: result.apnsId, environment };
 }
 
@@ -316,8 +325,8 @@ export async function sendApnsTest(
   userId: string,
   spaceId: string,
 ): Promise<{ status: number; reason?: string; apnsId?: string; environment: string }> {
-  const record = await tokens.load(userId);
-  if (!record || record.provider !== "apns") {
+  const record = await apnsRegistration(tokens, userId);
+  if (!record) {
     return { status: 0, reason: "no_token", environment: "production" };
   }
   return deliverApns(

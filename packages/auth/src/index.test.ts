@@ -140,18 +140,14 @@ describe("authRateLimitOptions", () => {
 describe("buildTrustedOrigins", () => {
   it("adds the localhost twin for a 127.0.0.1 web origin", () => {
     expect(
-      buildTrustedOrigins({
-        webOrigin: "http://127.0.0.1:5173",
-        baseURL: "http://127.0.0.1:5173",
-      }),
+      buildTrustedOrigins({ origins: ["http://127.0.0.1:5173", "http://127.0.0.1:5173"] }),
     ).toEqual(expect.arrayContaining(["http://127.0.0.1:5173", "http://localhost:5173"]));
   });
 
   it("keeps extraOrigins and does not twin non-loopback hosts", () => {
     expect(
       buildTrustedOrigins({
-        webOrigin: "https://app.example.test",
-        baseURL: "https://api.example.test",
+        origins: ["https://app.example.test", "https://api.example.test"],
         extraOrigins: ["https://extra.example.test"],
       }),
     ).toEqual([
@@ -159,6 +155,61 @@ describe("buildTrustedOrigins", () => {
       "https://api.example.test",
       "https://extra.example.test",
     ]);
+  });
+
+  // The list Better Auth received before both callers shared one builder.
+  function previousAuthOrigins(env: {
+    webOrigin: string;
+    baseURL: string;
+    extraOrigins?: string[];
+  }) {
+    const configured = [env.webOrigin, env.baseURL, ...(env.extraOrigins ?? [])];
+    const twins = [env.webOrigin, env.baseURL].flatMap(previousLoopbackTwins);
+    return [...new Set([...configured, ...twins])];
+  }
+
+  function previousLoopbackTwins(origin: string): string[] {
+    try {
+      const url = new URL(origin);
+      if (!["localhost", "127.0.0.1", "::1", "[::1]"].includes(url.hostname)) return [];
+      const twins: string[] = [];
+      for (const host of ["localhost", "127.0.0.1"]) {
+        if (host === url.hostname) continue;
+        const twin = new URL(origin);
+        twin.hostname = host;
+        twins.push(twin.origin);
+      }
+      return twins;
+    } catch {
+      return [];
+    }
+  }
+
+  const mobile = [
+    "rakazo://",
+    "http://localhost:8081",
+    "http://127.0.0.1:8081",
+    "http://localhost:19006",
+    "http://127.0.0.1:19006",
+  ];
+
+  it.each([
+    { webOrigin: "https://app.example.test", baseURL: "https://app.example.test" },
+    {
+      webOrigin: "https://app.example.test",
+      baseURL: "https://auth.example.test/",
+      extraOrigins: mobile,
+    },
+    { webOrigin: "http://127.0.0.1:5173", baseURL: "http://127.0.0.1:5173", extraOrigins: mobile },
+    { webOrigin: "http://localhost:5173/", baseURL: "http://[::1]:3100", extraOrigins: [] },
+    { webOrigin: "http://localhost:5173", baseURL: "not a url", extraOrigins: mobile },
+  ])("gives Better Auth the same list as before for $webOrigin and $baseURL", (env) => {
+    expect(
+      buildTrustedOrigins({
+        origins: [env.webOrigin, env.baseURL],
+        extraOrigins: env.extraOrigins,
+      }),
+    ).toEqual(previousAuthOrigins(env));
   });
 });
 
@@ -171,7 +222,7 @@ describe("passwordResetEmail", () => {
 
     expect(message).toMatchObject({
       to: "ada@example.test",
-      subject: "Reset your Rakazo password",
+      subject: "Reset your SparkAI password",
     });
     expect(message.text).toContain("https://rakazo.test/reset-password?token=secret&next=1");
     expect(message.html).toContain("&lt;Ada &amp; &quot;team&quot;&gt;");
@@ -183,7 +234,7 @@ describe("passwordResetEmail", () => {
 describe("signInCodeEmail", () => {
   it("puts the code in plain text and HTML without links", async () => {
     const message = await signInCodeEmail("ada@example.test", "042517");
-    expect(message).toMatchObject({ to: "ada@example.test", subject: "Your Rakazo sign-in code" });
+    expect(message).toMatchObject({ to: "ada@example.test", subject: "Your SparkAI sign-in code" });
     expect(message.text).toContain("042517");
     expect(message.html).toContain("042517");
     expect(message.text).not.toMatch(/https?:/);

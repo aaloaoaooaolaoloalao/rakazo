@@ -1,17 +1,15 @@
 import type { Actor } from "@rakazo/contracts";
 import { afterAll, describe, expect, it } from "vitest";
-import { bootstrapUserSpace } from "./bootstrap-user.js";
-import type { PrismaClient } from "./client.js";
-import { createDb } from "./client.js";
-import { legacyTeamScopeKey } from "./computers.js";
-import { createRepos } from "./repos.js";
-import { createSpaceForMember } from "./spaces.js";
-import { asSystem, runAsSystem, runAsTenant } from "./row-security.js";
-import { restoreBotUnderComputerQuota } from "./computers.js";
+import { bootstrapUserSpace } from "./account/bootstrap-user.js";
+import { createRepos } from "./bots/bot-repository.js";
+import { legacyTeamScopeKey, restoreBotUnderComputerQuota } from "./computers/computers.js";
+import type { PrismaClient } from "./database/client.js";
+import { createDb } from "./database/client.js";
+import { asSystem, runAsSystem, runAsTenant } from "./database/row-security.js";
+import { createSpaceForMember } from "./spaces/spaces.js";
 
 const databaseUrl = process.env.DATABASE_URL;
-const describePostgres =
-  process.env.VERIFY_DATABASE && databaseUrl ? describe.sequential : describe.skip;
+const describePostgres = process.env.VERIFY_DATABASE && databaseUrl ? describe : describe.skip;
 
 describePostgres("one computer per user (PostgreSQL)", () => {
   let prisma: PrismaClient;
@@ -68,7 +66,7 @@ describePostgres("one computer per user (PostgreSQL)", () => {
     });
     spaceA = (
       await runAsSystem("bootstrap A", () =>
-        bootstrapUserSpace(prisma, { id: userId }, { signupsEnabled: "true", signupAllowlist: "" }),
+        bootstrapUserSpace(prisma, { id: userId }),
       )
     ).spaceId;
 
@@ -142,11 +140,7 @@ describePostgres("one computer per user (PostgreSQL)", () => {
     });
     const legacySpace = (
       await runAsSystem("bootstrap legacy", () =>
-        bootstrapUserSpace(
-          prisma,
-          { id: legacyUser },
-          { signupsEnabled: "true", signupAllowlist: "" },
-        ),
+        bootstrapUserSpace(prisma, { id: legacyUser }),
       )
     ).spaceId;
 

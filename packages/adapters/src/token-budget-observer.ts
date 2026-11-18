@@ -28,12 +28,13 @@ function wallCap(env: NodeJS.ProcessEnv = process.env): number {
   return Number.isFinite(parsed) && parsed > 0 ? Math.floor(parsed) : 0;
 }
 
-function outputCap(requested: number, env: NodeJS.ProcessEnv = process.env): number {
+function outputCap(requested: number | null, env: NodeJS.ProcessEnv = process.env): number {
+  const fallback = requested ?? 0;
   const raw = env.MODEL_MAX_OUTPUT_TOKENS?.trim();
-  if (!raw || raw === "0") return requested;
+  if (!raw || raw === "0") return fallback;
   const parsed = Number(raw);
-  if (!Number.isFinite(parsed) || parsed <= 0) return requested;
-  return Math.min(requested, Math.floor(parsed));
+  if (!Number.isFinite(parsed) || parsed <= 0) return fallback;
+  return Math.min(fallback, Math.floor(parsed));
 }
 
 /** Check the shared user budget before every model call, including routines. */

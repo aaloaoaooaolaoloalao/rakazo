@@ -1,9 +1,8 @@
-import type { BotAvatarSet } from "@rakazo/contracts";
-import type { BotColorDef, LogoAvatarActivity } from "@rakazo/core";
+import type { BotAvatarSet, BotColorDef } from "@rakazo/contracts";
+import { BOT_COLOR_LIST, BOT_COLORS } from "@rakazo/contracts";
+import type { LogoAvatarActivity } from "@rakazo/core";
 import {
-  ACTIVE_RUN_STATUSES,
-  BOT_AVATAR_COLORS,
-  BOT_COLOR_LIST,
+  WORKING_RUN_STATUSES,
   DEFAULT_BOT_AVATAR_COLOR,
   resolvePersonaColorDef,
   SHIPPED_BOT_AVATAR_SHAPE_KEYS,
@@ -16,7 +15,7 @@ import { SparkDotAvatar, sparkMood, sparkShape } from "./spark-dot-avatar.js";
 import "./styles.css";
 
 export type { BotColorDef };
-export { BOT_AVATAR_COLORS, BOT_COLOR_LIST, DEFAULT_BOT_AVATAR_COLOR, resolvePersonaColorDef };
+export { BOT_COLOR_LIST, BOT_COLORS, DEFAULT_BOT_AVATAR_COLOR, resolvePersonaColorDef };
 
 export const BOT_SHAPES = SHIPPED_BOT_AVATAR_SHAPES;
 export const SHIPPED_SHAPE_KEYS = SHIPPED_BOT_AVATAR_SHAPE_KEYS;
@@ -86,7 +85,7 @@ export const BotAvatar = memo(function BotAvatar({
   className,
   morph = false,
 }: BotAvatarProps) {
-  const isWorking = ACTIVE_RUN_STATUSES.some((s) => s === status);
+  const isWorking = WORKING_RUN_STATUSES.some((s) => s === status);
 
   const parsed = useMemo(() => parseBotAvatar(color, identity), [color, identity]);
   const effectiveId = identity || parsed.color || "agent";
@@ -95,6 +94,8 @@ export const BotAvatar = memo(function BotAvatar({
     () => resolvePersonaColorDef(effectiveId, parsed.color),
     [effectiveId, parsed.color],
   );
+
+  const live = useBotAvatarActivity(effectiveId, status);
 
   if (parsed.isImage && parsed.imageUrl) {
     return (
@@ -133,7 +134,6 @@ export const BotAvatar = memo(function BotAvatar({
     );
   }
 
-  const live = useBotAvatarActivity(effectiveId, status);
   return (
     <SparkDotAvatar
       shape={sparkShape(parsed.shapeIndex, effectiveId)}

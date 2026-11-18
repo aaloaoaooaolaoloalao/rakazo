@@ -1,6 +1,6 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
-import type { ExecutorDeps } from "./executor-deps.js";
-import { retryRoutineRun, wakeRoutine } from "./run-routines.js";
+import type { ExecutorDeps } from "./runs/executor/executor-deps.js";
+import { retryRoutineRun, wakeRoutine } from "./runs/assembly/run-routines.js";
 
 const scheduledAt = new Date("2026-11-17T08:00:00Z");
 

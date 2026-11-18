@@ -1,8 +1,8 @@
-import { ACTIVE_RUN_STATUSES } from "@rakazo/core";
+import { WAITING_ON_USER_RUN_STATUSES, WORKING_RUN_STATUSES } from "@rakazo/core";
 import { renderToString } from "react-dom/server";
 import { describe, expect, it } from "vitest";
 import {
-  BOT_AVATAR_COLORS,
+  BOT_COLORS,
   BotAvatar,
   BotShapePreview,
   DEFAULT_BOT_AVATAR_COLOR,
@@ -12,7 +12,7 @@ import {
 } from "./bot-avatar.js";
 
 describe("BotAvatar", () => {
-  it("renders distinct ring gradient IDs for concurrent working avatars", () => {
+  it("renders distinct spark characters for concurrent working avatars", () => {
     const html = renderToString(
       <div>
         <BotAvatar color="#8B5CF6::shape_0" status="running" />
@@ -20,31 +20,28 @@ describe("BotAvatar", () => {
       </div>,
     );
 
-    const gradMatches = [...html.matchAll(/id="([^"]+)"/g)].map((m) => m[1]);
-    expect(gradMatches).toHaveLength(2);
-    expect(new Set(gradMatches).size).toBe(2);
-    for (const id of gradMatches) {
-      expect(id).toBeTruthy();
-      expect(html).toContain(`url(#${id})`);
-    }
+    const shapes = [...html.matchAll(/data-spark-dots="([^"]+)"/g)].map((match) => match[1]);
+    expect(shapes).toHaveLength(2);
+    expect(new Set(shapes).size).toBe(2);
+    expect(html).toContain('data-mood="working"');
   });
 
-  // Button sizes any SVG without a size class, which beats width/height attributes but not inline styles.
-  it("sizes the shape with an inline style so icon sizing in a button cannot shrink it", () => {
+  it("sizes the character on the canvas so icon sizing in a button cannot shrink it", () => {
     const html = renderToString(<BotAvatar color="#8B5CF6::shape_0" size={26} />);
-    const shape = html.match(/<svg[^>]*transition-transform[^>]*>/)?.[0];
-    expect(shape).toMatch(/style="[^"]*width:26px;height:26px/);
+    expect(html).toContain('width="26"');
+    expect(html).toContain('height="26"');
+    expect(html).toContain("spark-dot-avatar");
   });
 
-  it.each([...ACTIVE_RUN_STATUSES])("marks active run status %s as working", (status) => {
+  it.each([...WORKING_RUN_STATUSES])("marks run status %s as working", (status) => {
     const html = renderToString(<BotAvatar color="#3B82F6" status={status} />);
-    expect(html).toContain("<svg");
-    expect(html).toContain('data-working="true"');
+    expect(html).toContain("<canvas");
+    expect(html).toContain('data-mood="working"');
   });
 
-  it("keeps working attribute false when idle", () => {
+  it("keeps an idle character idle", () => {
     const html = renderToString(<BotAvatar color="#F59E0B" status="idle" />);
-    expect(html).toContain('data-working="false"');
+    expect(html).toContain('data-mood="idle"');
   });
 
   it("renders distinct shapes for distinct bot identities", () => {
@@ -69,7 +66,7 @@ describe("BotAvatar", () => {
   it("resolves explicit colors and shapes", () => {
     expect(resolvePersonaColorDef("bot", "#10B981").hex).toBe("#00C972");
     expect(resolvePersonaColorDef("bot", "#fff").hex).toBe("#fff");
-    expect(BOT_AVATAR_COLORS.length).toBeGreaterThan(0);
+    expect(BOT_COLORS.length).toBeGreaterThan(0);
   });
 
   it("falls back to the identity palette for invalid custom hex", () => {
@@ -100,6 +97,16 @@ describe("BotAvatar", () => {
     );
   });
 
+  it("keeps the ring off while a bot waits on the user", () => {
+    for (const status of WAITING_ON_USER_RUN_STATUSES) {
+      const html = renderToString(
+        <BotAvatar color="data:image/png;base64,abc" identity="maya" size={32} status={status} />,
+      );
+      expect(html).toContain('data-working="false"');
+      expect(html).not.toContain("rakazo-bot-avatar-ring");
+    }
+  });
+
   it("keeps idle photo avatars ring-free", () => {
     const html = renderToString(
       <BotAvatar color="data:image/png;base64,abc" identity="maya" size={32} status="idle" />,
@@ -120,12 +127,12 @@ describe("BotAvatar", () => {
     expect(html).not.toContain("evil.example");
   });
 
-  it("honors reduced-motion for the working mascot pulse class", () => {
+  it("marks a running character as working", () => {
     const html = renderToString(
       <BotAvatar color="#8B5CF6::shape_0" identity="maya" size={32} status="running" />,
     );
-    expect(html).toContain("animate-pulse");
-    expect(html).toContain("motion-reduce:animate-none");
+    expect(html).toContain('data-mood="working"');
+    expect(html).toContain("spark-dot-avatar");
   });
 
   it("restores a plain color that renders the organic body instead of a pinned shape", () => {
@@ -148,10 +155,9 @@ describe("BotAvatar", () => {
     const shaped = renderToString(
       <BotAvatar color={`${DEFAULT_BOT_AVATAR_COLOR}::shape_4`} identity="maya" />,
     );
-    expect(restored).toContain("rakazo-organic-avatar");
-    expect(restored).not.toContain("bot-character-eyes");
-    expect(shaped).toContain("bot-character-eyes");
-    expect(shaped).not.toContain("rakazo-organic-avatar");
+    expect(restored).toContain("data-spark-dots");
+    expect(shaped).toContain("data-spark-dots");
+    expect(restored).not.toEqual(shaped);
   });
 
   it("exposes shape picker name and pressed state", () => {
@@ -168,47 +174,42 @@ describe("BotAvatar", () => {
       <BotShapePreview identity="maya" label="Shape 1" color="#8B5CF6" selected={false} />,
     );
     expect(html).toContain('aria-label="Shape 1"');
-    expect(html).toContain("rakazo-organic-avatar");
+    expect(html).toContain("data-spark-dots");
   });
 
-  it("morphs the organic body only while working", () => {
-    const morphing = (status: string) =>
-      [
-        ...renderToString(<BotAvatar color="#8B5CF6" status={status} />).matchAll(
-          /rakazo-organic-avatar-body-(idle|working)"[^>]*>(<animate)?/g,
-        ),
-      ]
-        .filter((match) => match[2])
-        .map((match) => match[1]);
-    expect(morphing("idle")).toEqual([]);
-    expect(morphing("running")).toEqual(["working"]);
+  it("marks a running character as working and an idle one as idle", () => {
+    expect(renderToString(<BotAvatar color="#8B5CF6" status="idle" />)).toContain(
+      'data-mood="idle"',
+    );
+    expect(renderToString(<BotAvatar color="#8B5CF6" status="running" />)).toContain(
+      'data-mood="working"',
+    );
   });
 
-  it("draws every plain-colour bot with the organic body", () => {
+  it("draws every plain-colour bot as a spark character", () => {
     const html = renderToString(<BotAvatar color={DEFAULT_BOT_AVATAR_COLOR} identity="maya" />);
-    expect(html).toContain("rakazo-organic-avatar");
+    expect(html).toContain("spark-dot-avatar");
     expect(html).not.toContain("rakazo-bot-avatar-visor");
   });
 
   it("keeps uploaded images", () => {
     const html = renderToString(<BotAvatar color="data:image/png;base64,abc" identity="maya" />);
     expect(html).toContain("<img");
-    expect(html).not.toContain("rakazo-organic-avatar");
+    expect(html).not.toContain("spark-dot-avatar");
   });
 
   it("keeps an encoded studio shape", () => {
     const html = renderToString(
       <BotAvatar color={`${DEFAULT_BOT_AVATAR_COLOR}::shape_3`} identity="maya" />,
     );
-    expect(html).toContain("bot-character-eyes");
+    expect(html).toContain("data-spark-dots");
     expect(html).not.toContain("rakazo-organic-avatar");
   });
 
-  it("fills the organic body with the resolved palette hex when the custom color is invalid", () => {
+  it("paints the character with the resolved palette hex when the custom color is invalid", () => {
     const fallback = resolvePersonaColorDef("maya", "#zzzzzz");
     const html = renderToString(<BotAvatar color="#zzzzzz" identity="maya" />);
-    expect(html).toContain("rakazo-organic-avatar");
-    expect(html).toContain(`fill="${fallback.hex}"`);
+    expect(html).toContain(`data-color="${fallback.hex}"`);
     expect(html).not.toContain("#zzzzzz");
   });
 });

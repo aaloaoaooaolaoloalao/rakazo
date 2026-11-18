@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { normalizeRunError } from "./run-error.js";
+import { normalizeRunError } from "./runs/run-error.js";
 import {
   claimSize,
   dayWindow,

@@ -4,7 +4,7 @@ import { join } from "node:path";
 import type { TransactionalEmailProvider } from "@rakazo/adapter-kit";
 import { getLogger } from "@rakazo/logging";
 import { Hono } from "hono";
-import { readBoundedBody } from "./http-body.js";
+import { readBoundedBody } from "./http/http-body.js";
 
 /**
  * Two small endpoints for the native app:

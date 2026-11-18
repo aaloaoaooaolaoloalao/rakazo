@@ -8,9 +8,9 @@ import {
   readTokenLimits,
   tokenLimitExemptEmails,
 } from "@rakazo/core";
-import type { Prisma, PrismaClient } from "./generated/prisma/client.js";
-import { runAsSystem } from "./row-security.js";
-import { recordSecurityEvent } from "./security-events.js";
+import { recordSecurityEvent } from "./account/security-events.js";
+import type { Prisma, PrismaClient } from "./database/client.js";
+import { runAsSystem } from "./database/row-security.js";
 
 type BudgetDb = Pick<PrismaClient, "$transaction" | "user" | "usageRecord">;
 

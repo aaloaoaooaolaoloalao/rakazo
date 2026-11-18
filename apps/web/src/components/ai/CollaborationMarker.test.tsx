@@ -16,10 +16,10 @@ describe("collaboration transcript markers", () => {
 
     expect(html).toContain('data-testid="peer-receipt-chip"');
     expect(html).toContain('aria-label="Message from Research"');
-    expect(html).toContain('class="flex min-w-0 max-w-full justify-center py-1"');
+    expect(html).toContain('class="flex min-w-0 max-w-full justify-center"');
     expect(html).toContain('class="inline-flex max-w-full');
     expect(html).toContain("truncate font-medium");
-    expect(html).toContain("rakazo-organic-avatar");
+    expect(html).toContain("data-spark-dots");
     expect(html).toContain("Message from Research");
     expect(html).not.toContain("{peer}");
     expect(html).not.toContain("peer-replies-toggle");
@@ -34,7 +34,7 @@ describe("collaboration transcript markers", () => {
     );
 
     expect(html).toContain('role="status"');
-    expect(html).toContain('data-working="true"');
-    expect(html).toContain("rakazo-organic-avatar-body-working");
+    expect(html).toContain('data-mood="working"');
+    expect(html).toContain("data-spark-dots");
   });
 });

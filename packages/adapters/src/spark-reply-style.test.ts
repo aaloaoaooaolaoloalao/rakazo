@@ -1,5 +1,9 @@
 import { describe, expect, it } from "vitest";
-import { longWorkProgressGuidance, progressReplyGuidance, runReplyGuidance } from "./run-replies.js";
+import {
+  longWorkProgressGuidance,
+  progressReplyGuidance,
+  runReplyGuidance,
+} from "./runs/assembly/run-replies.prompt.js";
 import {
   SPARK_CONCISE_REPLY_GUIDANCE,
   sparkConciseReplyGuidanceForTrigger,
