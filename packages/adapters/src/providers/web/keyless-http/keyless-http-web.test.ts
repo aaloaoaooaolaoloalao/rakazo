@@ -10,7 +10,7 @@ import {
   pageWindow,
 } from "../../../web/web-limits.js";
 import { createWebProvider, resolveWebProviderKind } from "../../../web/web-provider-factory.js";
-import { webFetchFromTool, webSearchFromTool } from "../../../web/web-tools.js";
+import { webFetchFromTool, webSearchFromTool, webToolDetails } from "../../../web/web-tools.js";
 import { FakeWebProvider } from "../fake/fake-web.js";
 import {
   extractReadableText,
@@ -46,9 +46,7 @@ describe("keyless HTTP web provider", () => {
         resolveHostname: publicResolver,
       });
 
-      await expect(
-        webFetchFromTool(provider, ctx, { url: "https://example.test/doc" }),
-      ).resolves.toEqual({
+      expect(webToolDetails(await webFetchFromTool(provider, ctx, { url: "https://example.test/doc" }))).toEqual({
         url: "https://example.test/doc",
         title: "Untitled",
         text: body,
@@ -78,9 +76,7 @@ describe("keyless HTTP web provider", () => {
       fetch: async () => new Response(body, { headers: { "content-type": contentType } }),
       resolveHostname: publicResolver,
     });
-    await expect(
-      webFetchFromTool(provider, ctx, { url: "https://example.test/data" }),
-    ).resolves.toEqual({
+    expect(webToolDetails(await webFetchFromTool(provider, ctx, { url: "https://example.test/data" }))).toEqual({
       url: "https://example.test/data",
       title: "Untitled",
       text: body,
@@ -103,9 +99,9 @@ describe("keyless HTTP web provider", () => {
               }),
         resolveHostname: publicResolver,
       });
-      await expect(
-        webFetchFromTool(provider, ctx, { url: "https://example.test/start" }),
-      ).resolves.toMatchObject({
+      expect(
+        webToolDetails(await webFetchFromTool(provider, ctx, { url: "https://example.test/start" })),
+      ).toMatchObject({
         url: "https://example.test/final",
         text: "Use <project-root>/src",
       });
@@ -118,19 +114,23 @@ describe("keyless HTTP web provider", () => {
       fetch: async () => new Response(body, { headers: { "content-type": contentType } }),
       resolveHostname: publicResolver,
     });
-    await expect(
-      webFetchFromTool(provider, ctx, { url: "https://example.test/doc", maxChars: 100 }),
-    ).resolves.toMatchObject({
+    expect(
+      webToolDetails(
+        await webFetchFromTool(provider, ctx, { url: "https://example.test/doc", maxChars: 100 }),
+      ),
+    ).toMatchObject({
       text: `${body.slice(0, 100)}\n\n[Content truncated; continue with offset 100]`,
       truncated: true,
     });
-    await expect(
-      webFetchFromTool(provider, ctx, {
-        url: "https://example.test/doc",
-        maxChars: 100,
-        offset: 200,
-      }),
-    ).resolves.toMatchObject({ text: body.slice(200), truncated: false });
+    expect(
+      webToolDetails(
+        await webFetchFromTool(provider, ctx, {
+          url: "https://example.test/doc",
+          maxChars: 100,
+          offset: 200,
+        }),
+      ),
+    ).toMatchObject({ text: body.slice(200), truncated: false });
   });
 
   it.each(["text/plain", "application/json"])(
@@ -142,9 +142,7 @@ describe("keyless HTTP web provider", () => {
         resolveHostname: publicResolver,
         maxBufferBytes: 100,
       });
-      await expect(
-        webFetchFromTool(provider, ctx, { url: "https://example.test/doc" }),
-      ).resolves.toEqual({
+      expect(webToolDetails(await webFetchFromTool(provider, ctx, { url: "https://example.test/doc" }))).toEqual({
         error: "Response is too large",
       });
     },
@@ -193,7 +191,7 @@ describe("keyless HTTP web provider", () => {
         resolveHostname: publicResolver,
       });
       const result = await webFetchFromTool(provider, ctx, { url: "https://example.test/doc" });
-      expect(result).toMatchObject({ title: "Doc", text: "hello world", truncated: false });
+      expect(webToolDetails(result)).toMatchObject({ title: "Doc", text: "hello world", truncated: false });
     }
   });
 
@@ -230,12 +228,14 @@ describe("keyless HTTP web provider", () => {
     let offset = 0;
     let combined = "";
     for (let page = 0; page < 10; page += 1) {
-      const result = await webFetchFromTool(provider, ctx, {
-        url: "https://example.test/doc",
-        maxChars: 100,
-        offset,
-      });
-      if ("error" in result) throw new Error(result.error);
+      const result = webToolDetails(
+        await webFetchFromTool(provider, ctx, {
+          url: "https://example.test/doc",
+          maxChars: 100,
+          offset,
+        }),
+      ) as { error?: string; text: string; truncated?: boolean };
+      if ("error" in result && result.error) throw new Error(result.error);
       expect(result.text).not.toMatch(/[\uD800-\uDFFF]/u);
       if (!result.truncated) {
         combined += result.text;
@@ -367,14 +367,12 @@ describe("web tool apply with fake provider", () => {
       truncated: false,
     };
 
-    await expect(webSearchFromTool(fake, ctx, { query: "q", maxResults: 1 })).resolves.toEqual({
+    const $_web = await webSearchFromTool(fake, ctx, { query: "q", maxResults: 1 }); expect(webToolDetails($_web)).toEqual({
       results: [{ title: "One", url: "https://example.test/1", snippet: "s1" }],
     });
     expect(fake.lastSearch?.query).toBe("q");
 
-    await expect(
-      webFetchFromTool(fake, ctx, { url: "https://example.test/1", maxChars: 100 }),
-    ).resolves.toEqual({
+    expect(webToolDetails(await webFetchFromTool(fake, ctx, { url: "https://example.test/1", maxChars: 100 }))).toEqual({
       url: "https://example.test/1",
       title: "One",
       text: "Body text",
@@ -385,7 +383,7 @@ describe("web tool apply with fake provider", () => {
   it("surfaces provider errors as tool errors", async () => {
     const fake = new FakeWebProvider();
     fake.searchError = new Error("boom");
-    await expect(webSearchFromTool(fake, ctx, { query: "q" })).resolves.toEqual({
+    const $_web = await webSearchFromTool(fake, ctx, { query: "q" }); expect(webToolDetails($_web)).toEqual({
       error: "boom",
     });
   });
@@ -452,12 +450,7 @@ describe("web tool clamps", () => {
     expect(fake.lastFetch?.offset).toBe(-3);
 
     const rejected = new FakeWebProvider();
-    await expect(
-      webFetchFromTool(rejected, ctx, {
-        url: "https://example.test/1",
-        offset: MAX_WEB_FETCH_OFFSET + 1,
-      }),
-    ).resolves.toEqual({
+    expect(webToolDetails(await webFetchFromTool(rejected, ctx, {         url: "https://example.test/1",         offset: MAX_WEB_FETCH_OFFSET + 1,       }))).toEqual({
       error: `web_fetch can skip at most ${MAX_WEB_FETCH_OFFSET} characters.`,
     });
     expect(rejected.lastFetch).toBeUndefined();

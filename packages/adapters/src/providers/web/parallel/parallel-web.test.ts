@@ -4,7 +4,7 @@ import { describe, expect, it, vi } from "vitest";
 import { callRemoteMcpTool } from "../../../mcp/remote-mcp.js";
 import { MAX_WEB_FETCH_OFFSET } from "../../../web/web-limits.js";
 import { createWebProvider, resolveWebProviderKind } from "../../../web/web-provider-factory.js";
-import { webFetchFromTool, webSearchFromTool } from "../../../web/web-tools.js";
+import { webFetchFromTool, webSearchFromTool, webToolDetails } from "../../../web/web-tools.js";
 import { ParallelWebProvider } from "./parallel-web.js";
 import { parallelMcpFixture } from "./parallel-web.test-support.js";
 
@@ -48,18 +48,14 @@ describe("optional Parallel web provider", () => {
       const peer = parallelMcpFixture({ result });
       const provider = createWebProvider("parallel", peer.network);
       for (const maxChars of [100, 50_000]) {
-        expect(
-          await webFetchFromTool(provider, context, { url: "https://example.test/page", maxChars }),
-        ).toEqual({
+        expect(webToolDetails(await webFetchFromTool(provider, context, { url: "https://example.test/page", maxChars }))).toEqual({
           url: "https://example.test/page",
           title: "Large source",
           text: `${text.slice(0, maxChars)}\n\n[Content truncated; continue with offset ${maxChars}]`,
           truncated: true,
         });
       }
-      expect(
-        await webSearchFromTool(provider, context, { query: "question", maxResults: 1 }),
-      ).toEqual({
+      expect(webToolDetails(await webSearchFromTool(provider, context, { query: "question", maxResults: 1 }))).toEqual({
         results: [
           { url: "https://example.test/page", title: "Large source", snippet: "Useful evidence" },
         ],
@@ -108,13 +104,11 @@ describe("optional Parallel web provider", () => {
       results: [{ url: "https://example.test/page", title: "Long", excerpts: [], full_content }],
     };
     const peer = parallelMcpFixture({ result: { content: [], structuredContent: data } });
-    expect(
-      await webFetchFromTool(createWebProvider("parallel", peer.network), context, {
+    expect(webToolDetails(await webFetchFromTool(createWebProvider("parallel", peer.network), context, {
         url: "https://example.test/page",
         maxChars: 100,
         offset: 1_199_998,
-      }),
-    ).toMatchObject({ text: "aatail", truncated: false });
+      }))).toMatchObject({ text: "aatail", truncated: false });
   });
 
   it("rejects an offset past the read limit before calling Parallel", async () => {
@@ -153,15 +147,13 @@ describe("optional Parallel web provider", () => {
     };
     const peer = parallelMcpFixture({ result: { content: [], structuredContent: data } });
     const provider = createWebProvider("parallel", peer.network);
-    expect(await webSearchFromTool(provider, context, { query: "q", maxResults: 1 })).toEqual({
+    expect(webToolDetails(await webSearchFromTool(provider, context, { query: "q", maxResults: 1 }))).toEqual({
       results: [{ url: "https://example.test/first", title: "First", snippet: "a".repeat(8_000) }],
     });
-    expect(
-      await webFetchFromTool(provider, context, {
+    expect(webToolDetails(await webFetchFromTool(provider, context, {
         url: "https://example.test/first",
         maxChars: 100,
-      }),
-    ).toMatchObject({
+      }))).toMatchObject({
       title: "First",
       text: `${"a".repeat(100)}\n\n[Content truncated; continue with offset 100]`,
       truncated: true,
@@ -189,12 +181,10 @@ describe("optional Parallel web provider", () => {
           },
         },
       });
-      expect(
-        await webFetchFromTool(createWebProvider("parallel", peer.network), context, {
+      expect(webToolDetails(await webFetchFromTool(createWebProvider("parallel", peer.network), context, {
           url: "https://example.test/page",
           maxChars: 100,
-        }),
-      ).toMatchObject({ text: expected, truncated });
+        }))).toMatchObject({ text: expected, truncated });
     }
   });
   it.each([false, true])(
@@ -205,9 +195,7 @@ describe("optional Parallel web provider", () => {
         resolveWebProviderKind({ WEB_PROVIDER: "parallel" }),
         peer.network,
       );
-      expect(
-        await webSearchFromTool(provider, context, { query: "current question", maxResults: 1 }),
-      ).toEqual({
+      expect(webToolDetails(await webSearchFromTool(provider, context, { query: "current question", maxResults: 1 }))).toEqual({
         results: [
           { title: "Source", url: "https://example.test/page", snippet: "Useful evidence" },
         ],
@@ -240,7 +228,7 @@ describe("optional Parallel web provider", () => {
       url: "https://example.test/page",
       maxChars: 100,
     });
-    expect(page).toEqual({
+    expect(webToolDetails(page)).toEqual({
       title: "Source",
       url: "https://example.test/page",
       text: `${"Page text ".repeat(10)}\n\n[Content truncated; continue with offset 100]`,
