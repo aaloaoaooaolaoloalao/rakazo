@@ -2,7 +2,7 @@ import type { AdapterContext } from "@rakazo/adapter-kit";
 import { deferred } from "@rakazo/core/test-async";
 import { afterEach, describe, expect, it, vi } from "vitest";
 import { createWebProvider, resolveWebProviderKind } from "../../../web/web-provider-factory.js";
-import { webFetchFromTool, webSearchFromTool } from "../../../web/web-tools.js";
+import { webFetchFromTool, webSearchFromTool, webToolDetails } from "../../../web/web-tools.js";
 import { KeenableWebProvider } from "./keenable-web.js";
 import { keenableMcpFixture } from "./keenable-web.test-support.js";
 
@@ -31,9 +31,7 @@ describe("optional Keenable web provider", () => {
       peer.network,
     );
     expect(provider.describe().id).toBe("keenable");
-    expect(
-      await webSearchFromTool(provider, context, { query: "current question", maxResults: 1 }),
-    ).toEqual({
+    expect(webToolDetails(await webSearchFromTool(provider, context, { query: "current question", maxResults: 1 }))).toEqual({
       results: [{ title: "Source", url: "https://example.test/page", snippet: "Useful evidence" }],
     });
     expect(peer.calls[0]).toEqual({
@@ -85,24 +83,20 @@ describe("optional Keenable web provider", () => {
         isError: false,
       },
     });
-    expect(
-      await webSearchFromTool(new KeenableWebProvider(peer.network), context, {
+    expect(webToolDetails(await webSearchFromTool(new KeenableWebProvider(peer.network), context, {
         query: "current question",
         maxResults: 1,
-      }),
-    ).toEqual({
+      }))).toEqual({
       results: [{ title: "Source", url: "https://example.test/page", snippet: "Useful evidence" }],
     });
   });
 
   it("maps page markdown and caps content at the requested size", async () => {
     const peer = keenableMcpFixture();
-    expect(
-      await webFetchFromTool(new KeenableWebProvider(peer.network), context, {
+    expect(webToolDetails(await webFetchFromTool(new KeenableWebProvider(peer.network), context, {
         url: "https://example.test/page",
         maxChars: 100,
-      }),
-    ).toEqual({
+      }))).toEqual({
       title: "Source",
       url: "https://example.test/page",
       text: `${"Page text ".repeat(10)}\n\n[Content truncated; continue with offset 100]`,
@@ -131,13 +125,11 @@ describe("optional Keenable web provider", () => {
     const peer = keenableMcpFixture({
       result: textResult({ url: "https://example.test/page", title: "Source", content }),
     });
-    expect(
-      await webFetchFromTool(new KeenableWebProvider(peer.network), context, {
+    expect(webToolDetails(await webFetchFromTool(new KeenableWebProvider(peer.network), context, {
         url: "https://example.test/page",
         maxChars: 8_000,
         offset: 96_000,
-      }),
-    ).toEqual({
+      }))).toEqual({
       title: "Source",
       url: "https://example.test/page",
       text: `${content.slice(96_000, 100_000)}\n\n[Content truncated; stopped at the read limit]`,
@@ -153,7 +145,7 @@ describe("optional Keenable web provider", () => {
       maxChars: 100,
       offset: 50,
     });
-    expect(page).toMatchObject({
+    expect(webToolDetails(page)).toMatchObject({
       text: `${"Page text ".repeat(10)}\n\n[Content truncated; continue with offset 150]`,
       truncated: true,
     });

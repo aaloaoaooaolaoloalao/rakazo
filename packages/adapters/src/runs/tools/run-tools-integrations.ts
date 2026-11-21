@@ -13,7 +13,7 @@ import { addMcpServerFromTool } from "../../mcp/mcp-server-tool.js";
 import { serviceCallFromTool, serviceSearchFromTool } from "../../payments/paid-service-tools.js";
 import { collectLogIds } from "../../providers/integration/composio/composio-connector.js";
 import { storeMcpAppHtml } from "../../storage/thread-artifacts.js";
-import { webFetchFromTool, webSearchFromTool } from "../../web/web-tools.js";
+import { webFetchFromTool, webSearchFromTool, webToolDetails } from "../../web/web-tools.js";
 import type { RunContext } from "../assembly/run-context.js";
 import { publishMessage } from "../assembly/run-messages.js";
 import { runScopedToolExecutionId } from "../lifecycle/run-effects.js";
@@ -163,8 +163,11 @@ export const integrationTools: ToolHandlers = {
     const { args } = call;
     const found = await webSearchFromTool(ctx.providers.web, context, args);
     // A result's exact URL was chosen by the search index, not by text in this run.
-    for (const hit of ("results" in found && found.results) || []) {
-      const url = normalizedHttpUrl(hit.url);
+    const payload = webToolDetails<{ results?: Array<{ url?: string }> } | { error?: string }>(
+      found,
+    );
+    for (const hit of ("results" in payload && payload.results) || []) {
+      const url = hit.url ? normalizedHttpUrl(hit.url) : undefined;
       if (url) ctx.trust.searchResultUrls.add(url);
     }
     return call.finish(found);

@@ -35,6 +35,11 @@ function runWorkspace(ctx: RunContext, call: ToolCall): RunWorkspace {
     botId: ctx.bot.id,
     computerMode: ctx.computer.mode,
     computer: () => ctx.computer.get("tool", call.name),
+    home: {
+      store: ctx.deps.home,
+      homeKey: ctx.computer.stored.homeKey,
+      ready: () => Boolean(ctx.computer.lazy.ready) || ctx.computer.needsLiveComputerForFiles(),
+    },
     markDirty: () => ctx.computer.checkpoint.markDirty(),
     context: ctx.context,
     runSecrets: ctx.secrets,

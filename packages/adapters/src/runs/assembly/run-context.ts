@@ -258,6 +258,8 @@ export interface RunComputerContext {
   pageBrowserAllowed: boolean;
   acceptsImages: boolean;
   heldForTakeover: boolean;
+  /** Attachments or earlier files still need copying onto the live computer. */
+  needsLiveComputerForFiles: () => boolean;
 }
 
 export interface RunSource {

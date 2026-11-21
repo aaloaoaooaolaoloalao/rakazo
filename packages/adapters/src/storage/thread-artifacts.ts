@@ -295,6 +295,9 @@ export function createEarlierFileQueue(limit = EARLIER_FILES_PENDING) {
       pending = [];
       return taken;
     },
+    hasPending() {
+      return pending.length > 0;
+    },
     /** Record which taken files reached the computer, by the paths the copy returned. */
     copiedTo(taken: ReadonlyArray<FileBlock>, files: ReadonlyArray<MaterializedThreadFile>) {
       const paths = new Set(files.map((file) => file.path));

@@ -1,5 +1,5 @@
 import path from "node:path";
-import type { AdapterContext, ComputerRef, SandboxProvider } from "@rakazo/adapter-kit";
+import type { AdapterContext, AgentHomeStore, ComputerRef, SandboxProvider } from "@rakazo/adapter-kit";
 import { isSandboxProviderOutage, SandboxFileTooLargeError } from "@rakazo/adapter-kit";
 import type { ComputerMode } from "@rakazo/contracts";
 import { ATTACHMENT_MAX_BYTES } from "@rakazo/contracts";
@@ -29,6 +29,8 @@ export type RunWorkspace = {
   botId: string;
   computerMode: ComputerMode;
   computer: () => Promise<ComputerRef>;
+  /** Lists the stored home without waking the live computer when it is not running yet. */
+  home?: { store: AgentHomeStore; homeKey: string; ready: () => boolean };
   markDirty: () => void;
   context: AdapterContext;
   runSecrets: string[];
@@ -171,13 +173,13 @@ export async function listFilesFromTool(
   workspace: RunWorkspace,
   args: Record<string, unknown>,
 ) {
-  const { botId, computerMode, computer, context, runSecrets } = workspace;
+  const { botId, computerMode, computer, context, runSecrets, home } = workspace;
   const requestedPath = String(args.path ?? "");
-  const entries = await sandbox.listFiles(
-    await computer(),
-    resolveBotWorkspacePath(computerMode, botId, requestedPath),
-    context,
-  );
+  const storedPath = resolveBotWorkspacePath(computerMode, botId, requestedPath);
+  const entries =
+    home && !home.ready()
+      ? await home.store.list(home.homeKey, storedPath, context)
+      : await sandbox.listFiles(await computer(), storedPath, context);
   return {
     path: requestedPath,
     entries: entries.map((entry) => ({
@@ -196,10 +198,23 @@ export async function readFileFromTool(
   workspace: RunWorkspace,
   args: Record<string, unknown>,
 ) {
-  const { botId, computerMode, computer, context, runSecrets } = workspace;
+  const { botId, computerMode, computer, context, runSecrets, home } = workspace;
   const filePath = String(args.path ?? "");
   const storedPath = resolveBotWorkspacePath(computerMode, botId, filePath);
   let bytes: Uint8Array;
+  if (home && !home.ready()) {
+    try {
+      const text = await home.store.readFile(home.homeKey, storedPath, context, {
+        maxBytes: READ_FILE_MAX_BYTES,
+      });
+      return readFileRangeResult(filePath, redactSecrets(text, runSecrets), args);
+    } catch (error) {
+      if (error instanceof SandboxFileTooLargeError) {
+        return { error: fileTooLarge(computerMode, botId, storedPath), path: filePath };
+      }
+      throw error;
+    }
+  }
   try {
     bytes = await sandbox.readFile(await computer(), storedPath, context, {
       maxBytes: READ_FILE_MAX_BYTES,

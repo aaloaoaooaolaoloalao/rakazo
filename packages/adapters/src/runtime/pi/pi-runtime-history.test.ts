@@ -1,4 +1,5 @@
 import type { AgentRunRequest } from "@rakazo/adapter-kit";
+import { fenceUntrustedToolResult } from "@rakazo/core";
 import { beforeEach, describe, expect, it, vi } from "vitest";
 
 const captured = vi.hoisted(() => ({
@@ -401,10 +402,14 @@ describe("replaying an earlier reply's tool steps", () => {
         { call: "shell", arguments: { command: "curl -o x.crx https://example.test/x" } },
         { call: "shell", arguments: { command: "ls ext" } },
       ],
-      { result: "shell", text: text('{"stdout":"","stderr":"","code":0}'), isError: false },
       {
         result: "shell",
-        text: text('{"stdout":"10.7.1_0\\n","stderr":"","code":0}'),
+        text: text(fenceUntrustedToolResult('{"stdout":"","stderr":"","code":0}')),
+        isError: false,
+      },
+      {
+        result: "shell",
+        text: text(fenceUntrustedToolResult('{"stdout":"10.7.1_0\\n","stderr":"","code":0}')),
         isError: false,
       },
       [{ call: "SLACK_FIND_CHANNELS", arguments: { query: "general" } }],
@@ -426,7 +431,7 @@ describe("replaying an earlier reply's tool steps", () => {
       content: [
         {
           type: "text",
-          text: '{"stdout":"","stderr":"","code":0}\n[shell is not available to you now.]',
+          text: `${fenceUntrustedToolResult('{"stdout":"","stderr":"","code":0}')}\n[shell is not available to you now.]`,
         },
       ],
     });
@@ -457,8 +462,14 @@ describe("replaying an earlier reply's tool steps", () => {
       call?.role === "assistant" &&
         call.content.map((part) => part.type === "toolCall" && part.name),
     ).toEqual(["cafe_lookup", "cafe_lookup"]);
-    expect(first).toMatchObject({ isError: false, content: [{ text: "found" }] });
-    expect(second).toMatchObject({ isError: true, content: [{ text: "timed out" }] });
+    expect(first).toMatchObject({
+      isError: false,
+      content: [{ text: fenceUntrustedToolResult("found") }],
+    });
+    expect(second).toMatchObject({
+      isError: true,
+      content: [{ text: fenceUntrustedToolResult("timed out") }],
+    });
   });
 
   it("replays each call to a tool reached through use_tool as a use_tool call, and marks only its failed calls", () => {

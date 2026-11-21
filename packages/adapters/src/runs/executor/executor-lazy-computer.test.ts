@@ -281,7 +281,11 @@ async function runRoutine(
     deploymentModelKey: "fake-deployment-key",
     runtime: { describe: () => ({ capabilities: { scripted: false } }), run: runtimeRun },
     sandbox,
-    home: { commit: vi.fn(async () => "fixture-revision") },
+    home: {
+      commit: vi.fn(async () => "fixture-revision"),
+      list: vi.fn(async () => [{ path: "notes.txt", kind: "file", size: 4 }]),
+      readFile: vi.fn(async () => "stored text"),
+    },
     memory: { read: async () => ({ documents: [] }) },
     memoryProviders: {
       resolve: async () => {
@@ -332,6 +336,7 @@ async function runRoutine(
   };
   return {
     finalizeRun,
+    executorInput,
     sandbox,
     sleepJobs,
     toolResults,
@@ -501,7 +506,7 @@ describe("run computer provisioning", () => {
       { attachments: "image", steering: true, steeringAfterFirst: true, copyFailureOnce: true },
     );
     expect(finalizeRun).toHaveBeenCalledWith(expect.objectContaining({ outcome: "completed" }));
-    expect(provisionComputer).toHaveBeenCalledOnce();
+    expect(provisionComputer).not.toHaveBeenCalled();
     expect(sandbox.writeFile).not.toHaveBeenCalled();
     expect(steeringInputs).toEqual([
       expect.objectContaining({
@@ -514,7 +519,7 @@ describe("run computer provisioning", () => {
   });
 
   it("copies steering attachments onto an already-started computer before the next tool", async () => {
-    const { sandbox, finalizeRun } = await runRoutine(
+    const { sandbox, finalizeRun, executorInput } = await runRoutine(
       [
         { name: "list_files", args: { path: "" } },
         { name: "list_files", args: { path: "" } },
@@ -524,11 +529,10 @@ describe("run computer provisioning", () => {
     expect(finalizeRun).toHaveBeenCalledWith(expect.objectContaining({ outcome: "completed" }));
     expect(provisionComputer).toHaveBeenCalledOnce();
     expect(sandbox.writeFile).toHaveBeenCalledOnce();
-    expect(sandbox.writeFile.mock.invocationCallOrder[0]).toBeGreaterThan(
-      sandbox.listFiles.mock.invocationCallOrder[0]!,
-    );
+    expect(executorInput.home.list).toHaveBeenCalledOnce();
+    expect(sandbox.listFiles).toHaveBeenCalledOnce();
     expect(sandbox.writeFile.mock.invocationCallOrder[0]).toBeLessThan(
-      sandbox.listFiles.mock.invocationCallOrder[1]!,
+      sandbox.listFiles.mock.invocationCallOrder[0]!,
     );
   });
 
@@ -550,11 +554,27 @@ describe("run computer provisioning", () => {
     },
   );
 
-  it("starts the computer the first time a tool needs it and reuses it", async () => {
-    const { finalizeRun, sandbox, sleepJobs, toolResults } = await runRoutine([
+  it("lists workspace files from stored home without starting the computer", async () => {
+    const { finalizeRun, sandbox, executorInput, toolResults } = await runRoutine([
       { name: "list_files", args: { path: "" } },
       { name: "list_files", args: { path: "" } },
     ]);
+
+    expect(finalizeRun).toHaveBeenCalledWith(expect.objectContaining({ outcome: "completed" }));
+    expect(provisionComputer).not.toHaveBeenCalled();
+    expect(executorInput.home.list).toHaveBeenCalledTimes(2);
+    expect(sandbox.listFiles).not.toHaveBeenCalled();
+    expect(toolResults[0]).toMatchObject({ entries: [{ path: "notes.txt" }] });
+  });
+
+  it("starts the computer when attachments must be copied before listing", async () => {
+    const { finalizeRun, sandbox, sleepJobs } = await runRoutine(
+      [
+        { name: "list_files", args: { path: "" } },
+        { name: "list_files", args: { path: "" } },
+      ],
+      { attachments: "file" },
+    );
 
     expect(finalizeRun).toHaveBeenCalledWith(expect.objectContaining({ outcome: "completed" }));
     expect(provisionComputer).toHaveBeenCalledOnce();
@@ -564,9 +584,8 @@ describe("run computer provisioning", () => {
       expect.objectContaining({ runId: "run-1" }),
       "bot",
     );
-    expect(sandbox.listFiles).toHaveBeenCalledTimes(2);
+    expect(sandbox.writeFile).toHaveBeenCalled();
     expect(sandbox.listFiles).toHaveBeenCalledWith(COMPUTER, expect.any(String), expect.anything());
-    expect(toolResults[0]).toMatchObject({ entries: [{ path: "notes.txt" }] });
     expect(sleepJobs).toHaveLength(1);
     expect(sandbox.releaseScreen).toHaveBeenCalledWith(COMPUTER, expect.anything());
   });
@@ -619,9 +638,9 @@ describe("run computer provisioning", () => {
   it("keeps setup-failure retry semantics when the computer cannot start", async () => {
     provisionComputer.mockRejectedValue(new Error("provider unavailable"));
 
-    await expect(runRoutine([{ name: "list_files", args: { path: "" } }])).rejects.toThrow(
-      "Run setup failed; retrying",
-    );
+    await expect(
+      runRoutine([{ name: "list_files", args: { path: "" } }], { attachments: "file" }),
+    ).rejects.toThrow("Run setup failed; retrying");
     expect(provisionComputer).toHaveBeenCalledOnce();
     expect(sink.events).toContainEqual(
       expect.objectContaining({ level: "error", message: "run.setup_failed" }),
@@ -634,9 +653,9 @@ describe("run computer provisioning", () => {
   ])("retries setup after an outage at %s without an error report", async (_name, outage) => {
     provisionComputer.mockRejectedValue(outage);
 
-    await expect(runRoutine([{ name: "list_files", args: { path: "" } }])).rejects.toThrow(
-      "Run setup failed; retrying",
-    );
+    await expect(
+      runRoutine([{ name: "list_files", args: { path: "" } }], { attachments: "file" }),
+    ).rejects.toThrow("Run setup failed; retrying");
     expect(sink.events).toContainEqual(
       expect.objectContaining({ level: "warn", message: "run.setup_failed" }),
     );
@@ -659,7 +678,9 @@ describe("run computer provisioning", () => {
         },
       );
 
-      await runRoutine([{ name: "list_files", args: { path: "" } }]).catch(() => undefined);
+      await runRoutine([{ name: "list_files", args: { path: "" } }], { attachments: "file" }).catch(
+        () => undefined,
+      );
     } finally {
       vi.useRealTimers();
     }
@@ -675,7 +696,7 @@ describe("run computer provisioning", () => {
 
     const { finalizeRun, enqueue, prisma } = await runRoutine(
       [{ name: "list_files", args: { path: "" } }],
-      { priorSetupFailures: 7 },
+      { attachments: "file", priorSetupFailures: 7 },
     );
 
     expect(finalizeRun).toHaveBeenCalledExactlyOnceWith(
@@ -698,7 +719,7 @@ describe("run computer provisioning", () => {
 
       const { finalizeRun, enqueue } = await runRoutine(
         [{ name: "list_files", args: { path: "" } }],
-        { toolFailure },
+        { attachments: "file", toolFailure },
       );
 
       expect(provisionComputer).toHaveBeenCalledOnce();
@@ -713,6 +734,7 @@ describe("run computer provisioning", () => {
     const { finalizeRun, prisma, run, enqueue, resumeOnNextWorker } = await runRoutine(
       [{ name: "list_files", args: { path: "" } }],
       {
+        attachments: "file",
         toolFailure: "abort",
         shutdownSignal: new AbortController().signal,
       },
@@ -795,7 +817,7 @@ describe("run computer provisioning", () => {
   it("still fails an aborted run when the worker is not shutting down", async () => {
     const { finalizeRun, run, enqueue } = await runRoutine(
       [{ name: "list_files", args: { path: "" } }],
-      { toolFailure: "abort" },
+      { attachments: "file", toolFailure: "abort" },
     );
 
     expect(finalizeRun).toHaveBeenCalledWith(expect.objectContaining({ outcome: "failed" }));

@@ -1,7 +1,12 @@
 import { createHash } from "node:crypto";
 import type { AssistantMessage, Context, Message, ToolCall } from "@earendil-works/pi-ai";
 import type { AgentRunRequest, AgentSteeringMessage } from "@rakazo/adapter-kit";
-import { TOOL_STEP_CALLS_KEPT, toolStepOutcomeText } from "@rakazo/core";
+import {
+  fenceUntrustedToolResult,
+  TOOL_STEP_CALLS_KEPT,
+  toolResultTaintsRun,
+  toolStepOutcomeText,
+} from "@rakazo/core";
 import {
   bounded,
   IMAGE_NOT_KEPT,
@@ -130,8 +135,12 @@ function replayedResult(
   const ended = outcome ? `${outcome.charAt(0).toUpperCase()}${outcome.slice(1)}.` : "Done.";
   if (typeof call.result !== "string" || !call.result) return { text: ended, isError };
   // Saved results are already bounded; this only holds imported ones to the same size.
-  if (!call.result.includes(IMAGE_NOT_KEPT))
-    return { text: bounded(call.result, TOOL_CALL_TEXT_MAX_CHARS), isError };
+  if (!call.result.includes(IMAGE_NOT_KEPT)) {
+    const tool = step.tool ?? "";
+    let text = bounded(call.result, TOOL_CALL_TEXT_MAX_CHARS);
+    if (tool && toolResultTaintsRun(replayedToolName(tool))) text = fenceUntrustedToolResult(text);
+    return { text, isError };
+  }
   // The image itself is gone; what the bot wrote right after seeing it is what it showed.
   const quote =
     wordsAfter.length > WORDS_AFTER_IMAGE_MAX_CHARS

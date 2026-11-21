@@ -1,5 +1,32 @@
-import type { AdapterContext, WebFetchProvider, WebSearchProvider } from "@rakazo/adapter-kit";
+import type {
+  AdapterContext,
+  AgentToolExecutionResult,
+  WebFetchProvider,
+  WebSearchProvider,
+} from "@rakazo/adapter-kit";
+import { fenceUntrustedWebContent } from "@rakazo/core";
 import { clampMaxChars, clampMaxResults, clampOffset } from "./web-limits.js";
+
+/** Payload behind a fenced web tool result (for tests and connectors). */
+export function webToolDetails<T>(result: unknown): T {
+  if (
+    result &&
+    typeof result === "object" &&
+    (result as AgentToolExecutionResult).kind === "agent_tool_result"
+  ) {
+    return (result as AgentToolExecutionResult).details as T;
+  }
+  return result as T;
+}
+
+function fencedWebResult(source: string, payload: unknown): AgentToolExecutionResult {
+  const text = fenceUntrustedWebContent(source, JSON.stringify(payload, null, 2));
+  return {
+    kind: "agent_tool_result",
+    content: [{ type: "text", text }],
+    details: payload,
+  };
+}
 
 export async function webSearchFromTool(
   search: WebSearchProvider,
@@ -17,7 +44,7 @@ export async function webSearchFromTool(
       },
       context,
     );
-    return { results };
+    return fencedWebResult("web_search", { results });
   } catch (error) {
     return { error: error instanceof Error ? error.message : String(error) };
   }
@@ -40,7 +67,7 @@ export async function webFetchFromTool(
       },
       context,
     );
-    return result;
+    return fencedWebResult("web_fetch", result);
   } catch (error) {
     return { error: error instanceof Error ? error.message : String(error) };
   }

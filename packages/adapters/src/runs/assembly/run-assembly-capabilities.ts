@@ -409,6 +409,12 @@ export async function prepareRunComputer(
     attachedFilesPrompt,
     graphical,
     modelSeesImages,
+    needsLiveComputerForFiles: () =>
+      currentTurnFiles.length > 0 ||
+      earlierFiles.hasPending() ||
+      pendingTurnFiles.some((blocks) =>
+        blocks.some((block) => block.kind === "file" || block.kind === "image"),
+      ),
   };
 }
 

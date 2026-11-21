@@ -100,6 +100,7 @@ export async function createRunContext(
     graphical,
     runComputer,
     storedComputer,
+    needsLiveComputerForFiles,
     workspaceCheckpoint,
   } = parts.computer;
   const {
@@ -225,6 +226,7 @@ export async function createRunContext(
       pageBrowserAllowed,
       acceptsImages,
       heldForTakeover,
+      needsLiveComputerForFiles,
     },
     tools: {
       offered: tools,

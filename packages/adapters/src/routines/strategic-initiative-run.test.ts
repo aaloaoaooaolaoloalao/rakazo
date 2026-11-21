@@ -63,7 +63,11 @@ async function context(
       computerUse: {},
     },
     abortController: new AbortController(),
-    computer: { lazy: { throwIfFailed: () => {} }, checkpoint: { flush: vi.fn() } },
+    computer: {
+      lazy: { throwIfFailed: () => {} },
+      checkpoint: { flush: vi.fn() },
+      needsLiveComputerForFiles: () => false,
+    },
     tools: { approvedReplays: { assertDrained: () => {} } },
     source: {},
     trust: { receivedOutsideMessage: async () => options.outsideMessage ?? false },
