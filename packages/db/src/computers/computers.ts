@@ -99,10 +99,7 @@ export function computerScopeKey(input: ComputerKeyInput) {
  */
 export function computerHomeKey(input: ComputerKeyInput) {
   if (input.mode === "team") {
-    const digest = createHash("sha256")
-      .update(input.userId)
-      .digest("hex")
-      .slice(0, 32);
+    const digest = createHash("sha256").update(input.userId).digest("hex").slice(0, 32);
     return `team-${digest}`;
   }
   if (!input.botId) throw new Error("Dedicated computers require a bot id");
@@ -175,6 +172,14 @@ export function resolveDefaultComputerMode(
 
 export const computerLimitUserMessage =
   "כבר יש לך מחשב פעיל. כל הבוטים שלך משתמשים באותו מחשב, ולא ניתן לפתוח מחשב נוסף.";
+
+/**
+ * A new bot's computer runs on the host machine once someone chose "this Mac". Only the local
+ * route saves that choice, and the API clears it under a provider that cannot offer it.
+ */
+export function newComputerKind(envKind: string, computerHost: string | null | undefined) {
+  return computerHost === "this-mac" ? "desktop" : envKind;
+}
 
 export class ComputerLimitError extends ClientError {
   constructor(_limit: number) {

@@ -31,7 +31,7 @@ const setupBody = readFileSync(path.join(srcDir, "setup.html"), "utf8").match(
 const setupScript = readFileSync(path.join(srcDir, "setup.js"), "utf8");
 
 function stackState(phase: DesktopLocalStackState["phase"]): DesktopLocalStackState {
-  return { phase, message: null, output: [], layerBytes: {}, imageTag: "v0.0.0" };
+  return { phase, message: null, output: [], layerBytes: {}, layerTotals: {}, imageTag: "v0.0.0" };
 }
 
 function element<T extends HTMLElement>(id: string): T {
@@ -65,9 +65,7 @@ interface Harness {
   resolveCheck: (result: DesktopReachability) => void;
   /** What every `stack.start` call this mount receives resolves with. */
   startResult: Deferred<DesktopLocalStackState>;
-  /** How many times `stack.start` was called. */
   starts: () => number;
-  /** Links passed to `openLink`. */
   links: string[];
   /** Resolves the oldest pending `state` call, in call order. */
   resolveAppState: (saved: DesktopSetup | null) => void;
@@ -77,7 +75,6 @@ interface Harness {
   rejectStackState: (reason: unknown) => void;
   /** Delivers a pushed stack state the way the `desktop.setup.stack.changed` push does. */
   pushStackState: (state: DesktopLocalStackState) => void;
-  /** Payloads received by `save`. */
   saves: DesktopSetup[];
   /** Resolves the oldest pending `save` call, in call order. */
   resolveSave: (result: DesktopSetupResult) => void;
@@ -183,6 +180,46 @@ describe("setup", () => {
     vi.useRealTimers();
     document.body.innerHTML = "";
     delete (window as { rakazoSetup?: RakazoSetup }).rakazoSetup;
+  });
+
+  it.each([
+    ["server-url", { ok: true, url: "https://one.example" }, "ok"],
+    ["server-headers", { ok: true, url: "https://one.example" }, "ok"],
+    ["server-url", { ok: false, error: "Server did not answer." }, "error"],
+    ["server-headers", { ok: false, error: "Server did not answer." }, "error"],
+  ] as const)("clears a completed check after editing %s (%s)", async (id, result, tone) => {
+    const ui = await boot({ mode: "existing", serverUrl: "https://one.example" });
+    const check = element<HTMLButtonElement>("check");
+    check.click();
+    ui.resolveCheck(result);
+    await flush();
+
+    const status = element("status");
+    expect(status.textContent).not.toBe("");
+    expect(status.getAttribute("data-tone")).toBe(tone);
+    const field = element<HTMLInputElement | HTMLTextAreaElement>(id);
+    field.value = id === "server-url" ? "https://two.example" : "X-Example: sample";
+    field.dispatchEvent(new Event("input", { bubbles: true }));
+    expect(status.textContent).toBe("");
+    expect(status.hasAttribute("data-tone")).toBe(false);
+    expect(check.disabled).toBe(false);
+
+    check.click();
+    ui.resolveCheck({ ok: true, url: "https://two.example" });
+    await flush();
+    expect(status.textContent).toBe("Rakazo answered at https://two.example.");
+  });
+
+  it("does not clear an unrelated save error when an address is edited", async () => {
+    const ui = await boot({ mode: "existing", serverUrl: "https://one.example" });
+    submitForm();
+    ui.resolveSave({ ok: false, error: "Could not save that address." });
+    await flush();
+
+    const field = element<HTMLInputElement>("server-url");
+    field.value = "https://two.example";
+    field.dispatchEvent(new Event("input", { bubbles: true }));
+    expect(element("status").textContent).toBe("Could not save that address.");
   });
 
   it("keeps an address edited while the connection check is pending", async () => {
@@ -581,6 +618,78 @@ describe("setup", () => {
     await flush();
     expect(element("stack-phase").textContent).toBe("Descargando Rakazo…");
     expect(element("stack-detail").textContent).toBe("3 MB descargados");
+  });
+
+  it.each([
+    { language: "English", locale: ENGLISH, separator: ".", template: "{size} downloaded" },
+    {
+      language: "Polish",
+      locale: { lang: "pl", dir: "ltr", messages: PL_MESSAGES } satisfies RakazoSetup["locale"],
+      separator: ",",
+      template: "Pobrano {size}",
+    },
+  ])("formats installer download sizes in $language", async ({ locale, separator, template }) => {
+    const ui = await boot(null, locale);
+    selectMode("new");
+    submitForm();
+    ui.startResult.resolve(stackState("pulling"));
+    await flush();
+    expect(element("stack-detail").textContent).toBe("");
+
+    const sizes = [
+      [42, "42 B"],
+      [2_500, "3 kB"],
+      [2_500_000, "3 MB"],
+      [1_000_000_000, `1${separator}0 GB`],
+      [1_150_000_000, `1${separator}2 GB`],
+      [1_400_000_000, `1${separator}4 GB`],
+    ] as const;
+    for (const [bytes, size] of sizes) {
+      const stack = { ...stackState("pulling"), layerBytes: { layer: bytes } };
+      ui.pushStackState(stack);
+      await flush();
+      ui.resolveStackState(stack);
+      await flush();
+      expect(element("stack-detail").textContent).toBe(template.replace("{size}", size));
+    }
+  });
+
+  it("measures downloads of a known size against their total and leaves unsized ones out", async () => {
+    const ui = await boot(null, ENGLISH);
+    selectMode("new");
+    submitForm();
+    ui.startResult.resolve({
+      ...stackState("pulling"),
+      layerBytes: { server: 5e6, runtime: 0, database: 3e8 },
+      layerTotals: { server: 9.7e7, runtime: 2e7 },
+    });
+    await flush();
+    expect(element("stack-detail").textContent).toBe("5 MB of 117 MB");
+    expect(element("stack-progress").getAttribute("aria-valuenow")).toBe("22.6");
+  });
+
+  it("moves the bar back when a download's size arrives after another has progressed", async () => {
+    const ui = await boot(null, ENGLISH);
+    selectMode("new");
+    submitForm();
+    ui.startResult.resolve({
+      ...stackState("pulling"),
+      layerBytes: { server: 5e7 },
+      layerTotals: { server: 1e8 },
+    });
+    await flush();
+    expect(element("stack-progress").getAttribute("aria-valuenow")).toBe("50.0");
+
+    const later = {
+      ...stackState("pulling"),
+      layerBytes: { server: 5e7, runtime: 0 },
+      layerTotals: { server: 1e8, runtime: 1e8 },
+    };
+    ui.pushStackState(later);
+    await flush();
+    ui.resolveStackState(later);
+    await flush();
+    expect(element("stack-progress").getAttribute("aria-valuenow")).toBe("35.0");
   });
 
   it("renders Polish setup controls and interpolates connection and download status", async () => {

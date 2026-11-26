@@ -25,6 +25,7 @@ const namedSpace: RosterScope = (actor, input) => ({
 export const ROSTER_PROCEDURES: Record<string, RosterScope> = {
   "bots.create": actorSpace,
   "bots.importCreate": actorSpace,
+  "bots.importMany": actorSpace,
   "bots.createFromTemplate": actorSpace,
   "bots.duplicate": actorSpace,
   "bots.reorder": actorSpace,
@@ -35,6 +36,7 @@ export const ROSTER_PROCEDURES: Record<string, RosterScope> = {
   "bots.restore": actorSpace,
   "bots.remove": actorSpace,
   "bots.rotateWebhookSecret": actorSpace,
+  "onboarding.firstBot": actorSpace,
   "groups.create": actorSpace,
   "groups.duplicate": actorSpace,
   "groups.update": actorSpace,

@@ -6,12 +6,14 @@ import { useUiLocale } from "../i18n/i18n";
 import type { CreateAction } from "./create-chooser";
 import { createMenuItems } from "./create-chooser";
 
-/** Liquid Glass home header: account on the left; activity, search and create on the right. */
+/**
+ * Liquid Glass home header: activity and search together on the right, and create on its own
+ * glass after them. Account and integrations sit in the bottom toolbar (`InboxToolbar`).
+ */
 export function useInboxHeader({
   nativeHeader,
   ready,
   hasSession,
-  initials,
   activityMode,
   toggleActivityMode,
   runCreateAction,
@@ -20,7 +22,6 @@ export function useInboxHeader({
   nativeHeader: boolean;
   ready: boolean;
   hasSession: boolean;
-  initials: string;
   activityMode: boolean;
   toggleActivityMode: () => void;
   runCreateAction: (action: CreateAction) => void;
@@ -39,15 +40,6 @@ export function useInboxHeader({
       headerStyle: { backgroundColor: "transparent" },
       title: "",
       headerTitle,
-      unstable_headerLeftItems: () => [
-        {
-          type: "button" as const,
-          label: t`Account`,
-          icon: { type: "sfSymbol" as const, name: "person.crop.circle" },
-          accessibilityLabel: t`Account`,
-          onPress: () => router.push("/account"),
-        },
-      ],
       unstable_headerRightItems: () => [
         {
           type: "button" as const,
@@ -70,6 +62,8 @@ export function useInboxHeader({
           label: t`Create`,
           accessibilityLabel: t`Create`,
           icon: { type: "sfSymbol" as const, name: "plus" },
+          // Creating is a different kind of action from the ways of looking at chats beside it.
+          sharesBackground: false,
           menu: {
             items: createMenuItems.map(({ id, label, sfSymbol }) => ({
               type: "action" as const,
@@ -86,7 +80,6 @@ export function useInboxHeader({
     navigation,
     ready,
     hasSession,
-    initials,
     activityMode,
     toggleActivityMode,
     runCreateAction,

@@ -429,10 +429,14 @@ describe("GraphileJobWorkerHost task identifier guard", () => {
         wrapJobPayload({ routineId: "routine-1", scheduledFor: scheduled }),
         helpers,
       );
-      expect(target["routine.wakeup"]).toHaveBeenCalledWith({
-        routineId: "routine-1",
-        scheduledFor: scheduled,
-      });
+      expect(target["routine.wakeup"]).toHaveBeenCalledWith(
+        {
+          routineId: "routine-1",
+          scheduledFor: scheduled,
+        },
+        undefined,
+        { number: undefined, max: undefined },
+      );
     } finally {
       await host.stop();
     }

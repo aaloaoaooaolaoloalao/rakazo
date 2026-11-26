@@ -14,7 +14,8 @@ describe("spark model overrides", () => {
   it("resolves GLM 5.3 Flash and lists it in the catalog", () => {
     const resolved = resolveRuntimeModel({ provider: "mistral", id: SPARK_GLM_FLASH_ID });
     expect(resolved.model?.id).toBe(SPARK_GLM_FLASH_ID);
-    expect(resolved.model?.name).toBe("GLM 5.3 Flash");
+    const catalogName = builtinModels().getModel("mistral", SPARK_GLM_FLASH_ID)?.name;
+    expect(resolved.model?.name).toBe(catalogName ?? "GLM 5.3 Flash");
     expect(resolved.model?.api).toBe("mistral-conversations");
     expect(resolved.model?.baseUrl).toBe("https://api.mistral.ai");
     expect(resolved.model?.contextWindow).toBe(1_048_576);

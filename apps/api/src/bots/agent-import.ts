@@ -13,6 +13,8 @@ import type {
   AgentImportCreateInput,
   AgentImportErrorReason,
   AgentImportFile,
+  AgentImportLeftover,
+  AgentImportManyInput,
   AgentImportMemoryDestination,
   AgentImportNeed,
   AgentImportPlan,
@@ -26,6 +28,7 @@ import type {
   MessageBlock,
 } from "@rakazo/contracts";
 import {
+  BOT_DESCRIPTION_MAX_LENGTH,
   BOT_INSTRUCTIONS_MAX_LENGTH,
   CreateRoutineInput,
   isValidTimeZone,
@@ -33,7 +36,13 @@ import {
 } from "@rakazo/contracts";
 import type { RoutineTriggersAvailable, SkillFiles } from "@rakazo/core";
 import {
+  agentImportLeftoverMessages,
+  agentImportSelection,
+  agentImportUncheckedByDefault,
+  ClientError,
   combineImportedInstructions,
+  isRecord,
+  looksLikeCredential,
   messagingProviderName,
   parseAgentImport,
   readAgentImportFolder,
@@ -181,6 +190,8 @@ async function takenNames(db: Reader, actor: Actor) {
 export type Built = {
   plan: AgentImportPlan;
   settings: (AgentImportSettings & { keyValues: Map<string, string> }) | null;
+  /** Leftovers as read, before the preview's skill names; absent when a plan has none. */
+  leftoverInputs?: Map<string, AgentImportLeftover>;
   routineInputs: Map<string, CreateRoutineInputType>;
   mcpConfigs: Map<string, ImportedMcpServer & { slug: string }>;
   connectedKeyIds: Set<string>;
@@ -224,7 +235,19 @@ async function buildPlan(
     model = { id: "model", title, provider, providerName, modelId, status };
   }
 
-  const skipped = [...plan.skipped, ...settings.skipped];
+  const found = [...plan.skipped, ...settings.skipped];
+  // An app to connect again is something the new bot can help with, so it goes to its chat.
+  const skipped = found.filter((entry) => entry.reason !== "reconnect");
+  const appLeftovers = found
+    .filter((entry) => entry.reason === "reconnect")
+    .map((entry, index) => ({
+      id: `leftover:app:${index}`,
+      title: entry.path
+        .replace(/^apps: /, "")
+        .replace(/\s+/g, " ")
+        .slice(0, 80),
+      content: "A connected app. Connect it again.",
+    }));
   const apiKeys: AgentImportPlan["apiKeys"] = [];
   for (const key of settings.apiKeys) {
     if (await services.hasModelConnection(actor, key.provider)) {
@@ -296,9 +319,31 @@ async function buildPlan(
     ];
   });
 
+  // Shown with the names its skills are saved under, as the chat will show it; the write
+  // renames the text as read, under the creation lock.
+  // A leftover has no box to tick, so one that looks like it holds a key is never handed to
+  // the chat: it is listed as not imported instead.
+  const handable = plan.leftovers.filter((item) => !item.containsKey);
+  for (const item of plan.leftovers) {
+    if (!item.containsKey) continue;
+    skipped.push({
+      path: `routines: ${looksLikeCredential(item.title) ? "Routine" : item.title}`,
+      reason: "contains_key",
+    });
+  }
+  const leftoverInputs = new Map([...handable, ...appLeftovers].map((item) => [item.id, item]));
+  const leftovers = [
+    ...handable.map((item) => ({
+      ...item,
+      content: renameRoutineSkillMentions(item.content, previewSkillNames),
+    })),
+    ...appLeftovers,
+  ];
+
   return {
-    plan: { ...plan, model, mcpServers, routines, apiKeys, skipped },
+    plan: { ...plan, model, mcpServers, routines, apiKeys, leftovers, skipped },
     settings,
+    leftoverInputs,
     routineInputs,
     mcpConfigs,
     connectedKeyIds,
@@ -364,6 +409,55 @@ export async function createImportedBot<PreparedKey>(
   return written.bot;
 }
 
+/**
+ * One after another, so each takes a name the ones before it left free. Each gets what a
+ * review ticks by default; one refused does not stop the rest.
+ */
+export async function createImportedBots<PreparedKey>(
+  services: AgentImportServices<PreparedKey>,
+  actor: Actor,
+  input: AgentImportManyInput,
+  signal?: AbortSignal,
+): Promise<({ bot: Bot } | { error: string; data?: Record<string, unknown> })[]> {
+  const results: ({ bot: Bot } | { error: string; data?: Record<string, unknown> })[] = [];
+  for (const { importKey, files } of input.agents) {
+    signal?.throwIfAborted();
+    try {
+      const request = { files, includeSecrets: false, skillFiles: {} };
+      const built = await buildPlan(services as AgentImportServices, actor, request);
+      const { plan } = built;
+      const written = await writeImportedBot(
+        services,
+        actor,
+        {
+          importKey,
+          // The suggested name changes once this bot takes it, so a retry is known by its files.
+          digest: requestDigest({ files }),
+          name: plan.suggestedName,
+          description: plan.suggestedDescription.trim().slice(0, BOT_DESCRIPTION_MAX_LENGTH),
+          computerMode: "team",
+          selection: agentImportSelection(plan, {
+            unchecked: new Set(agentImportUncheckedByDefault(plan)),
+            destinations: {},
+            modelUsable: plan.model?.status === "ready",
+          }),
+          build: async () => built,
+        },
+        signal,
+      );
+      results.push({ bot: written.bot });
+    } catch (error) {
+      // This module refuses with 4xx ORPCErrors; anything else is a server fault.
+      const refusal =
+        error instanceof ClientError || (error instanceof ORPCError && error.status < 500);
+      if (!refusal) throw error;
+      const data = error instanceof ORPCError && isRecord(error.data) ? error.data : undefined;
+      results.push({ error: error.message, ...(data ? { data } : {}) });
+    }
+  }
+  return results;
+}
+
 /** A bot to create from a plan: an import's files or a template build it. */
 export type ImportedBotRequest = Pick<
   AgentImportCreateInput,
@@ -405,7 +499,8 @@ export async function writeImportedBot<PreparedKey>(
   };
   const retried = await already();
   if (retried) return { bot: retried, created: false };
-  const { plan, settings, routineInputs, mcpConfigs, connectedKeyIds } = await input.build();
+  const { plan, settings, leftoverInputs, routineInputs, mcpConfigs, connectedKeyIds } =
+    await input.build();
   const instructions = combineImportedInstructions(
     selected(plan.instructions, input.selection.instructions),
   );
@@ -429,6 +524,9 @@ export async function writeImportedBot<PreparedKey>(
   );
   const routines = selected(plan.routines, input.selection.routines).map(
     (item) => routineInputs.get(item.id)!,
+  );
+  const leftovers = selected(plan.leftovers, input.selection.leftovers ?? []).map(
+    (item) => leftoverInputs?.get(item.id) ?? item,
   );
   // A key whose provider was connected after the preview is still selected; skip it.
   if (new Set(input.selection.apiKeys).size !== input.selection.apiKeys.length) {
@@ -679,6 +777,20 @@ export async function writeImportedBot<PreparedKey>(
         blocks: checklist,
       });
       await announceAdded(tx, botId, message, thread.id, checklist);
+    }
+    // A leftover names a renamed skill as its created routines do.
+    const handedOver = leftovers.map((item) => ({
+      ...item,
+      content: renameRoutineSkillMentions(item.content, renamed),
+    }));
+    for (const text of handedOver.length ? agentImportLeftoverMessages(handedOver) : []) {
+      const blocks: MessageBlock[] = [{ kind: "text", text }];
+      const message = await createThreadMessageInTransaction(tx, {
+        threadId: thread.id,
+        role: "bot",
+        blocks,
+      });
+      await announceAdded(tx, botId, message, thread.id, blocks);
     }
     await tx.agentImport.create({
       data: {

@@ -219,6 +219,22 @@ describe("completionMarksUnread", () => {
     expect(completionMarksUnread("routine", text)).toBe(false);
   });
 
+  it("lets a webhook delivery finish silently, like a routine", () => {
+    expect(runAllowsSilentEmpty("webhook")).toBe(true);
+    const silent = stripNoResponseReply(NO_RESPONSE, [{ kind: "text", text: NO_RESPONSE }]);
+    const segments = completionMessageSegments(silent.blocks, {
+      allowSilentEmpty: runAllowsSilentEmpty("webhook"),
+    });
+    const blocks = finalBlocksAfterMidTurnProgress(segments, runAllowsSilentEmpty("webhook"));
+    expect(blocks).toEqual([]);
+    expect(
+      completionMarksUnread("webhook", completionNotificationBody(silent.assembled, blocks)),
+    ).toBe(false);
+    expect(completionMarksUnread("webhook", "Approval needed")).toBe(true);
+    expect(runReplyGuidance("webhook")).toBe(ROUTINE_SILENT_REPLY_GUIDANCE);
+    expect(runPromotesMidTurnNarration("webhook")).toBe(false);
+  });
+
   it("allows reaction silence without a bubble, fallback, or unread", () => {
     expect(runAllowsSilentEmpty("reaction")).toBe(true);
     const silent = stripNoResponseReply(NO_RESPONSE, [{ kind: "text", text: NO_RESPONSE }]);
@@ -523,9 +539,7 @@ describe("stripNoResponseReply", () => {
 describe("runReplyGuidance", () => {
   it("does not ask routine runs for message_user progress", () => {
     expect(runPromotesMidTurnNarration("routine")).toBe(false);
-    expect(runReplyGuidance("routine")).toBe(
-      `${SPARK_CONCISE_REPLY_GUIDANCE} ${ROUTINE_SILENT_REPLY_GUIDANCE}`,
-    );
+    expect(runReplyGuidance("routine")).toBe(ROUTINE_SILENT_REPLY_GUIDANCE);
     expect(runReplyGuidance("routine")).not.toContain("progress updates with message_user");
     expect(runReplyGuidance("routine")).toContain(NO_RESPONSE);
     expect(runReplyGuidance("routine")).toContain(`exactly ${NO_RESPONSE}`);
@@ -631,7 +645,9 @@ describe("runReplyMode", () => {
   });
 
   it("gives each mode its own guidance", () => {
-    expect(runReplyGuidance("user", "chat")).toBe(longWorkProgressGuidance());
+    expect(runReplyGuidance("user", "chat")).toBe(
+      `${SPARK_CONCISE_REPLY_GUIDANCE} ${longWorkProgressGuidance()}`,
+    );
     expect(runReplyGuidance("user", "messages")).toBe(messagesModeReplyGuidance());
     expect(messagesModeReplyGuidance()).toContain("private and never shown");
     expect(messagesModeReplyGuidance()).toContain("message_user");

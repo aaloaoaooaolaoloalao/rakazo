@@ -4,6 +4,7 @@ import path from "node:path";
 import { Readable } from "node:stream";
 import { resolveSupervisorToken } from "@rakazo/core/node/secrets-guard";
 import { deferred } from "@rakazo/core/test-async";
+import type { Hono } from "hono";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import {
   COMPUTER_IMAGE,
@@ -622,6 +623,15 @@ describe("provisioning network rollback", () => {
 });
 
 describe("restricted egress rekeying", () => {
+  async function egressReport() {
+    const { supervisorApp } = await import("./index.js");
+    const response = await supervisorApp.request("/diagnostics/egress", {
+      headers: { authorization: `Bearer ${resolveSupervisorToken(process.env)}` },
+    });
+    expect(response.status).toBe(200);
+    return response.text();
+  }
+
   function setupExisting(botNet: string) {
     const homePath = path.join(process.env.DATA_DIR!, "homes", "bot");
     const info = {
@@ -703,33 +713,56 @@ describe("restricted egress rekeying", () => {
       COMPUTER_IMAGE,
       ["1.1.1.1", "9.9.9.9"],
     );
+    expect(await egressReport()).toContain("Restricted egress.");
   });
 
   it("refuses restricted computers until the host ruleset is verified", async () => {
     vi.stubEnv("SANDBOX_COMPUTER_EGRESS", "restricted");
     const { existing } = setupExisting(computerNetworkNameFor("bot"));
-    mocks.verifyRestrictedEgress.mockRejectedValueOnce(new Error("egress is not enforced"));
+    const { EgressNotEnforced } = await import("./egress-probe.js");
+    mocks.verifyRestrictedEgress.mockRejectedValueOnce(new EgressNotEnforced("rules missing"));
 
     const response = await provision();
     expect(response.status).toBe(500);
-    expect(await response.json()).toEqual({ error: "egress is not enforced" });
+    expect(await response.json()).toEqual({ error: "rules missing" });
     expect(existing.start).not.toHaveBeenCalled();
     expect(mocks.docker.createContainer).not.toHaveBeenCalled();
     expect(mocks.docker.createNetwork).not.toHaveBeenCalled();
+    expect(await egressReport()).toContain("Computer starts are blocked");
+  });
+
+  it("reports configured open egress without probing", async () => {
+    vi.stubEnv("SANDBOX_COMPUTER_EGRESS", "open");
+    expect(await egressReport()).toContain("SANDBOX_COMPUTER_EGRESS=open\nOpen egress.");
+    expect(mocks.verifyRestrictedEgress).not.toHaveBeenCalled();
+  });
+
+  it("does not report verified restrictions for the shared screen network", async () => {
+    vi.stubEnv("SANDBOX_COMPUTER_EGRESS", "restricted");
+    vi.stubEnv("SANDBOX_SCREEN_NETWORK", "internal");
+    expect(await egressReport()).toContain("Computers use a shared network.");
+    expect(mocks.verifyRestrictedEgress).not.toHaveBeenCalled();
   });
 
   it("auto egress stays open only after a probe shows the rules are missing", async () => {
     vi.stubEnv("SANDBOX_COMPUTER_EGRESS", "auto");
     const { existing } = setupExisting(computerNetworkNameFor("bot"));
     const { EgressNotEnforced } = await import("./egress-probe.js");
+    const probe = deferred<void>();
     mocks.verifyRestrictedEgress
-      .mockRejectedValueOnce(new Error("probe timed out"))
+      .mockReturnValueOnce(probe.promise)
       .mockRejectedValueOnce(new EgressNotEnforced("a computer bridge reached the host"));
 
-    // A probe that could not finish decides nothing: refuse, and probe again next time.
-    const refused = await provision();
+    const provisioning = provision();
+    await vi.waitFor(() => expect(mocks.verifyRestrictedEgress).toHaveBeenCalledOnce());
+    expect(await egressReport()).toContain("Waiting for the host firewall check.");
+    probe.reject(new Error("probe timed out"));
+    const refused = await provisioning;
     expect(refused.status).toBe(500);
     expect(existing.start).not.toHaveBeenCalled();
+    expect(await egressReport()).toBe(
+      "SANDBOX_COMPUTER_EGRESS=auto\nEgress check failed. See the supervisor logs for details.\n",
+    );
 
     mocks.docker.getNetwork.mockReturnValue({
       inspect: vi.fn().mockResolvedValue({ Id: "bot-network", Options: {} }),
@@ -741,6 +774,7 @@ describe("restricted egress rekeying", () => {
     const opened = await provision();
     expect(await opened.clone().text()).not.toMatch(/probe/);
     expect(opened.status).toBe(200);
+    expect(await egressReport()).toContain("Open egress fallback.");
     // The completed answer is kept: no third probe.
     await provision();
     expect(mocks.verifyRestrictedEgress).toHaveBeenCalledTimes(2);
@@ -896,11 +930,9 @@ describe("space computer limit enforcement", () => {
     mocks.docker.listContainers.mockImplementation(
       async (opts?: { filters?: { label?: string[] } }) => {
         const labels = opts?.filters?.label ?? [];
-        // For findBotContainer check
         if (labels.some((l: string) => l.startsWith("rakazo.botId="))) {
           return [];
         }
-        // For countSpaceContainers
         return [
           { Id: "c1", Labels: { "rakazo.managed": "true", "rakazo.spaceId": "space-1" } },
           { Id: "c2", Labels: { "rakazo.managed": "true", "rakazo.spaceId": "space-1" } },
@@ -1238,6 +1270,42 @@ describe("screen release status", () => {
     };
   }
 
+  function screenWhoseTeardownCanFail(app: Hono, id: string, stderr = "") {
+    const commands: string[] = [];
+    const state = { failCommands: false };
+    const container = managedContainer(
+      vi.fn(async ({ Cmd }: { Cmd?: string[] }) => {
+        commands.push(Cmd?.join(" ") ?? "");
+        const failing = state.failCommands;
+        const payload = Buffer.from(failing ? stderr : "");
+        const header = Buffer.alloc(8);
+        header[0] = 2;
+        header.writeUInt32BE(payload.length, 4);
+        return {
+          start: async () => Readable.from([Buffer.concat([header, payload])]),
+          inspect: async () => ({ ExitCode: failing ? 1 : 0 }),
+        };
+      }),
+    );
+    const withLease = (leaseId: string) => ({ ...headers, "x-rakazo-screen-lease-id": leaseId });
+    return {
+      commands,
+      container,
+      state,
+      open: (leaseId: string) =>
+        app.request(`/computers/${id}/screen-mode`, {
+          method: "POST",
+          headers: withLease(leaseId),
+          body: JSON.stringify({ interactive: false, revokeControl: false }),
+        }),
+      cancel: (leaseId: string) =>
+        app.request(`/computers/${id}/screen`, {
+          method: "DELETE",
+          headers: { ...withLease(leaseId), "x-rakazo-cancel-run-work": "1" },
+        }),
+    };
+  }
+
   it("returns 404 only when the computer is already missing", async () => {
     const { supervisorApp } = await import("./index.js");
     const missing = {
@@ -1313,7 +1381,9 @@ describe("screen release status", () => {
         .map(([options]) => options.Cmd.join(" "))
         .join("\n");
       expect(setupCommand).toContain("browser-profile-1");
-      expect(setupCommand).toContain("browser_running || launch_browser");
+      expect(setupCommand).toContain(
+        "if browser_running; then found_open=1; else launch_browser; fi",
+      );
       expect(setupCommand).not.toContain("Browser.close");
       expect(setupCommand).not.toContain("for marker in /tmp/rakazo/browser-profile-*");
     },
@@ -1414,6 +1484,55 @@ describe("screen release status", () => {
     });
     expect(released.status).toBe(500);
     await expect(released.json()).resolves.toEqual({ error: "computer screen failed to stop" });
+  });
+
+  it("retries a release whose teardown failed", async () => {
+    const { supervisorApp } = await import("./index.js");
+    const screen = screenWhoseTeardownCanFail(supervisorApp, "release-retried");
+    mocks.docker.getContainer.mockReturnValue(screen.container);
+    expect((await screen.open("run-1:1")).status).toBe(200);
+
+    screen.state.failCommands = true;
+    expect((await screen.cancel("run-1:1")).status).toBe(500);
+
+    screen.state.failCommands = false;
+    const before = screen.commands.length;
+    expect((await screen.cancel("run-1:1")).status).toBe(200);
+    expect(screen.commands.slice(before)).toHaveLength(1);
+    expect(screen.commands.at(-1)).toContain("Browser.close");
+  });
+
+  it("sets a screen up again when the next request retries its failed teardown", async () => {
+    const { supervisorApp } = await import("./index.js");
+    const screen = screenWhoseTeardownCanFail(supervisorApp, "stuck-teardown");
+    mocks.docker.getContainer.mockReturnValue(screen.container);
+    expect((await screen.open("run-1:1")).status).toBe(200);
+    screen.state.failCommands = true;
+    expect((await screen.cancel("run-1:1")).status).toBe(500);
+    const before = screen.commands.length;
+
+    screen.state.failCommands = false;
+    const reopened = await screen.open("run-2:2");
+    expect(reopened.status).toBe(200);
+    expect(
+      screen.commands.slice(before).map((command) => command.includes("Browser.close")),
+    ).toEqual([true, false]);
+  });
+
+  it("answers the next request with the stop's error while the retried teardown keeps failing", async () => {
+    const { supervisorApp } = await import("./index.js");
+    const forkFailure = "bash: fork: retry: Resource temporarily unavailable\n";
+    const screen = screenWhoseTeardownCanFail(supervisorApp, "stuck-teardown-error", forkFailure);
+    mocks.docker.getContainer.mockReturnValue(screen.container);
+    expect((await screen.open("run-1:1")).status).toBe(200);
+    screen.state.failCommands = true;
+    expect((await screen.cancel("run-1:1")).status).toBe(500);
+    const before = screen.commands.length;
+
+    const reopened = await screen.open("run-2:2");
+    expect(reopened.status).toBe(400);
+    await expect(reopened.json()).resolves.toEqual({ error: forkFailure });
+    expect(screen.commands.slice(before)).toHaveLength(1);
   });
 
   it("fully tears down a screen when control revocation is uncertain", async () => {

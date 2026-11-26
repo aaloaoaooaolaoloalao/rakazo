@@ -190,8 +190,19 @@ export const AgentImportSkipReasonSchema = z.enum([
   "default",
   /** A connected app with no server address to carry over: connect it again here. */
   "reconnect",
+  /** Text that looks like it holds a key, with no box to tick it by. */
+  "contains_key",
 ]);
 export type AgentImportSkipReason = z.infer<typeof AgentImportSkipReasonSchema>;
+
+/** What the import cannot create itself. The new bot is asked to set it up in its chat. */
+export const AgentImportLeftoverSchema = z.object({
+  id: z.string(),
+  title: z.string(),
+  content: z.string(),
+  containsKey,
+});
+export type AgentImportLeftover = z.infer<typeof AgentImportLeftoverSchema>;
 
 export const AgentImportPlanSchema = z.object({
   source: AgentImportSourceSchema,
@@ -204,6 +215,7 @@ export const AgentImportPlanSchema = z.object({
   mcpServers: z.array(AgentImportMcpServerSchema),
   routines: z.array(AgentImportRoutineSchema),
   apiKeys: z.array(AgentImportApiKeySchema),
+  leftovers: z.array(AgentImportLeftoverSchema).default([]),
   skipped: z.array(z.object({ path: z.string(), reason: AgentImportSkipReasonSchema })),
 });
 export type AgentImportPlan = z.infer<typeof AgentImportPlanSchema>;
@@ -227,6 +239,7 @@ export const AgentImportSelectionSchema = z.strictObject({
   mcpServers: selectedIds.max(AGENT_IMPORT_MAX_FILES).default([]),
   routines: selectedIds.max(AGENT_IMPORT_MAX_FILES).default([]),
   apiKeys: selectedIds.max(AGENT_IMPORT_MAX_FILES).default([]),
+  leftovers: selectedIds.max(AGENT_IMPORT_MAX_FILES).default([]),
 });
 
 /** API keys and credential values are read only when the user opted in. */
@@ -247,18 +260,16 @@ export const AgentImportPreviewInput = z.strictObject({
   skillFiles,
 });
 
+/** Chosen by the client once per import, so a retried create returns the same bot. */
+const importKey = z
+  .string()
+  .trim()
+  .min(8)
+  .max(100)
+  .refine((key) => !key.startsWith(BOT_TEMPLATE_IMPORT_KEY_PREFIX), "That import key is reserved.");
+
 export const AgentImportCreateInput = z.strictObject({
-  /** Chosen by the client once per import, so a retried create returns the same bot. */
-  importKey: z
-    .string()
-    .trim()
-    .min(8)
-    .max(100)
-    .refine(
-      (key) => !key.startsWith(BOT_TEMPLATE_IMPORT_KEY_PREFIX),
-      "That import key is reserved.",
-    )
-    .optional(),
+  importKey: importKey.optional(),
   files: AgentImportFilesSchema,
   includeSecrets,
   skillFiles,
@@ -271,3 +282,25 @@ export const AgentImportCreateInput = z.strictObject({
   selection: AgentImportSelectionSchema,
 });
 export type AgentImportCreateInput = z.infer<typeof AgentImportCreateInput>;
+
+export const AGENT_IMPORT_MAX_BATCH = 100;
+
+/** Several agents from one export, each created with what a review ticks by default. */
+export const AgentImportManyInput = z.strictObject({
+  agents: z
+    .array(z.strictObject({ importKey, files: AgentImportFilesSchema }))
+    .min(1)
+    .max(AGENT_IMPORT_MAX_BATCH)
+    .superRefine((agents, ctx) => {
+      const total = agents
+        .flatMap((agent) => agent.files)
+        .reduce((sum, file) => sum + file.content.length, 0);
+      if (total > AGENT_IMPORT_MAX_TOTAL_LENGTH) {
+        ctx.addIssue({ code: "custom", message: "The files are too large to import." });
+      }
+      if (agents.reduce((sum, agent) => sum + agent.files.length, 0) > AGENT_IMPORT_MAX_FILES) {
+        ctx.addIssue({ code: "custom", message: "Too many files to import at once." });
+      }
+    }),
+});
+export type AgentImportManyInput = z.infer<typeof AgentImportManyInput>;

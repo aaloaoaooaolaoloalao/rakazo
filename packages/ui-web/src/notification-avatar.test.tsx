@@ -29,16 +29,10 @@ it.each<[string, { color: string; avatarSet?: "rakazo" }]>([
   );
 
   const [svg] = tags(portrait, "svg");
-  expect(tags(chat, "svg")).toContainEqual(expect.objectContaining({ viewBox: svg!.viewBox }));
-  const [body] = tags(portrait, "path");
-  const bodyGeometry = bot.avatarSet === "rakazo" ? { d: body!.d } : body!;
-  expect(tags(chat, "path")).toContainEqual(expect.objectContaining(bodyGeometry));
-  if (bot.avatarSet === "rakazo") expect(chat).toContain(`data-color="${body!.fill}"`);
-  for (const transform of tags(portrait, "g").flatMap((group) => group.transform ?? [])) {
-    expect(chat).toContain(`transform="${transform}"`);
-  }
+  expect(svg?.viewBox).toBeTruthy();
   const eyes = [...tags(portrait, "rect"), ...tags(portrait, "ellipse")];
   expect(eyes).toHaveLength(2);
-  const chatEyes = [...tags(chat, "rect"), ...tags(chat, "ellipse")];
-  for (const eye of eyes) expect(chatEyes).toContainEqual(expect.objectContaining(eye));
+  expect(chat).toContain("data-spark-dots");
+  expect(chat).toContain("data-color=");
+  expect(chat).not.toContain("<path");
 });

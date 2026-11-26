@@ -2,8 +2,8 @@ import type { BotAvatarSet, BotColorDef } from "@rakazo/contracts";
 import { BOT_COLOR_LIST, BOT_COLORS } from "@rakazo/contracts";
 import type { LogoAvatarActivity } from "@rakazo/core";
 import {
-  WORKING_RUN_STATUSES,
   DEFAULT_BOT_AVATAR_COLOR,
+  isRunWorking,
   resolvePersonaColorDef,
   SHIPPED_BOT_AVATAR_SHAPE_KEYS,
   SHIPPED_BOT_AVATAR_SHAPES,
@@ -85,7 +85,7 @@ export const BotAvatar = memo(function BotAvatar({
   className,
   morph = false,
 }: BotAvatarProps) {
-  const isWorking = WORKING_RUN_STATUSES.some((s) => s === status);
+  const isWorking = isRunWorking(status);
 
   const parsed = useMemo(() => parseBotAvatar(color, identity), [color, identity]);
   const effectiveId = identity || parsed.color || "agent";

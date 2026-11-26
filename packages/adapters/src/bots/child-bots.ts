@@ -26,6 +26,7 @@ import {
   draftRecordingsOfLeaseInTransaction,
   expireComputerExecutionLeases,
   legacyTeamHomeKey,
+  pageImageStorageKeys,
   recordComputerRunEnd,
   THREAD_LOCK_TRANSACTION_OPTIONS,
   teamComputerUserId,
@@ -43,6 +44,7 @@ import { isSandboxGoneError } from "../computers/sandbox/sandbox-errors.js";
 import { sandboxKindCapabilities } from "../computers/sandbox/sandbox-kind-capabilities.js";
 import { BrowserStoppedReleaseError } from "../computers/screens/computer-screens.js";
 import { toComputerRef } from "../computers/screens/computer-support.js";
+import type { MeetingService } from "../meetings/meeting-service.js";
 import { purgeClearedConversationMemory } from "../memory/conversation-memory-cleanup.js";
 import type { MemoryProviderResolver } from "../memory/memory-provider-factory.js";
 import { wakeRun } from "../runs/wakeups/wake-run.js";
@@ -212,6 +214,7 @@ async function ensureSpawnRun(
 }
 
 type BotLifecycleDeps = {
+  meetings?: Pick<MeetingService, "recordBotRetirements" | "retireDeletedBotSessions">;
   prisma: PrismaClient;
   sandbox: SandboxProvider;
   home: AgentHomeStore;
@@ -254,6 +257,8 @@ export async function archiveSpawnedBot(
   deps: BotLifecycleDeps,
   input: {
     spawnedByBotId: string;
+    /** The run asking, which finishes its reply even when it archives its own bot. */
+    runId: string;
     userId: string;
     spaceId: string;
     confirmName: string;
@@ -290,11 +295,8 @@ export async function archiveSpawnedBot(
   const target = matches[0]!;
   const confirmed = confirmSpawnedBotName(confirmName, target.name);
   if (!confirmed.ok) return confirmed;
-  if (target.id === input.spawnedByBotId) {
-    return { error: "A bot cannot archive itself with archive_bot." };
-  }
-
-  await archiveBot(deps, target, context);
+  const self = target.id === input.spawnedByBotId;
+  await archiveBot(deps, target, context, self ? { keepRunId: input.runId } : undefined);
   return { ok: true as const, botId: target.id, name: target.name };
 }
 
@@ -302,6 +304,7 @@ export async function archiveBot(
   deps: BotLifecycleDeps,
   bot: LifecycleBot,
   context: AdapterContext,
+  options?: { keepRunId?: string },
 ) {
   const [dedicated, activeRuns, activeRoutines] = await Promise.all([
     deps.prisma.computer.findUnique({
@@ -315,7 +318,11 @@ export async function archiveBot(
       },
     }),
     deps.prisma.run.findMany({
-      where: { botId: bot.id, status: { in: [...ACTIVE_RUN_STATUSES] } },
+      where: {
+        botId: bot.id,
+        status: { in: [...ACTIVE_RUN_STATUSES] },
+        ...(options?.keepRunId ? { id: { not: options.keepRunId } } : {}),
+      },
       select: { id: true, taskId: true, userId: true, spaceId: true },
     }),
     deps.prisma.routine.findMany({
@@ -326,11 +333,20 @@ export async function archiveBot(
   const now = new Date();
   const cancelledRuns = await deps.prisma.$transaction(async (tx) => {
     const cancelled = await cancelRunsInTransaction(tx, activeRuns, now);
+    // The routines that were on are marked, so restoring the bot turns the same ones back on.
+    await tx.routine.updateMany({
+      where: { botId: bot.id, active: true },
+      data: { resumeOnRestore: true },
+    });
     await tx.routine.updateMany({
       where: { botId: bot.id },
       data: { active: false, nextRunAt: null },
     });
-    await expireComputerExecutionLeases(tx, { botId: bot.id });
+    // The asking run keeps its computer lease until it ends, so its heartbeat does not abort it.
+    await expireComputerExecutionLeases(tx, {
+      botId: bot.id,
+      ...(options?.keepRunId ? { runId: { not: options.keepRunId } } : {}),
+    });
     // Archiving ends a person's control of the bot's screen, and the recording made under it.
     const held = await tx.computer.findMany({
       where: { controlBotId: bot.id, controlLeaseId: { not: null } },
@@ -461,6 +477,7 @@ export async function destroyBot(
       // Like its files, the bot's own pages and their links go with it; group pages stay.
       const botPages = { botId: bot.id, groupId: null, spaceId: bot.spaceId };
       const pageShareSecrets = await deletePageShareSecrets(tx, botPages);
+      const pageImageKeys = await pageImageStorageKeys(tx, botPages);
       await tx.page.deleteMany({ where: botPages });
       const groupCleanup = await detachBotFromGroups(tx, bot.id);
       // Membership can have ended earlier; recorded runs still name every surviving group
@@ -501,6 +518,7 @@ export async function destroyBot(
           memoriesPreserved: !deleteMemories,
         },
       });
+      const meetingRetirements = await deps.meetings?.recordBotRetirements(tx, bot);
       await tx.bot.delete({ where: { id: bot.id } });
       if (webhookSecretId) {
         await tx.secret.deleteMany({
@@ -511,9 +529,11 @@ export async function destroyBot(
       return {
         artifactKeys: [
           ...botArtifacts.map((artifact) => artifact.storageKey),
+          ...pageImageKeys,
           ...groupCleanup.artifactKeys,
         ],
         removedGroupIds: groupCleanup.removedGroupIds,
+        meetingRetirements,
         directMemory,
         groupMemberMemory: groupMemberMemory.map((run) => run.thread),
         groupMemory: groupCleanup.memory,
@@ -523,6 +543,9 @@ export async function destroyBot(
     }, THREAD_LOCK_TRANSACTION_OPTIONS),
   );
   if (!deletion) return { removedGroupIds: [] as string[], alreadyRemoved: true };
+  if (deletion.meetingRetirements?.length) {
+    await deps.meetings?.retireDeletedBotSessions(deletion.meetingRetirements);
+  }
   await Promise.allSettled(
     deletion.cancelledGroupRuns.map((run) => deps.jobs.cancel(runJobKey(run.id))),
   );
@@ -728,13 +751,16 @@ async function detachBotFromGroups(tx: Prisma.TransactionClient, botId: string) 
   const pageShareSecrets = dissolvedGroupIds.length
     ? await deletePageShareSecrets(tx, { groupId: { in: dissolvedGroupIds } })
     : [];
+  const pageImageKeys = dissolvedGroupIds.length
+    ? await pageImageStorageKeys(tx, { groupId: { in: dissolvedGroupIds } })
+    : [];
   if (dissolvedGroupIds.length) {
     await tx.chatGroup.deleteMany({ where: { id: { in: dissolvedGroupIds } } });
   }
   return {
     removedGroupIds: dissolvedGroupIds,
     memory,
-    artifactKeys: groupArtifacts.map((artifact) => artifact.storageKey),
+    artifactKeys: [...groupArtifacts.map((artifact) => artifact.storageKey), ...pageImageKeys],
     pageShareSecrets,
     cancelledRuns: cancelledRuns.map((run) => ({
       id: run.id,

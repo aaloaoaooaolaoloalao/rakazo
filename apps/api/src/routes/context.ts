@@ -2,10 +2,12 @@ import { implement, ORPCError } from "@orpc/server";
 import { SecretStoreUnavailableError } from "@rakazo/adapter-kit";
 import type { CatalogReads } from "@rakazo/adapters";
 import {
+  adminDeploymentModel,
   applyCodexLiveCatalog,
   applyProviderLiveCatalog,
   approvedModelCreditCatalogEntry,
   approvedModelCreditSeesImages,
+  assertModelProviderAllowed,
   availableModelCreditOfferings,
   CHATGPT_OAUTH_PROVIDER,
   CodexCatalogCache,
@@ -16,6 +18,7 @@ import {
   createFaviconResolver,
   decisionModelCatalog,
   deploymentModelRole,
+  deploymentPaysForReview,
   findConnectedModelCredential,
   hasHostedModelCredits,
   hasReadyModelCredential,
@@ -26,6 +29,8 @@ import {
   McpOAuthBroker,
   modelCredentialAuthKindsForSpace,
   modelCreditOfferings,
+  modelProviderAllowed,
+  modelProviderAllowlist,
   offeredCatalog,
   providerCatalogCache,
   providerLiveCatalogsForSpace,
@@ -42,7 +47,6 @@ import type {
   ModelCatalogEntry,
   ModelRole,
   ModelRoleChoice,
-  ModelRoleSettings,
   ModelRoleView,
 } from "@rakazo/contracts";
 import {
@@ -70,7 +74,7 @@ import {
   ModelCreditOfferingUnavailableError,
   UnsupportedThinkingLevelError,
 } from "./model-role-errors.js";
-import { meDto } from "./shared.js";
+import { deploymentModelAccess, meDto } from "./shared.js";
 
 /**
  * Runs an authenticated procedure with row-level security scoped to the actor's
@@ -103,6 +107,7 @@ export function createRouterContext(deps: RouterDeps) {
     actor: Actor | null;
     /** The signed-in session, so a push token ends with the session that registered it. */
     sessionId?: string;
+    nativeSessionId?: string;
     signal?: AbortSignal;
     /** Re-runs the request's auth so a long-lived stream notices sign-out and revocation. */
     stillAuthorized?: () => Promise<boolean>;
@@ -121,7 +126,7 @@ export function createRouterContext(deps: RouterDeps) {
     prepareMcpServer,
     insertMcpServer,
     announceMcpServer,
-  } = createMcpServers(deps, onboardingDeps, mcpOAuth);
+  } = createMcpServers(deps, mcpOAuth);
   const announceRoutine = createRoutineAnnouncer(deps);
   const codexCatalog = deps.codexCatalog ?? new CodexCatalogCache();
   const { verifyModelConnection, connectModelCredential } = createModelConnector(
@@ -175,12 +180,16 @@ export function createRouterContext(deps: RouterDeps) {
     const configured = deps.billing?.modelCreditsEnabled
       ? (modelCreditOfferings()?.offerings ?? [])
       : [];
+    // Narrowed before any offering is read, so an excluded provider's key is never decrypted.
+    const allowlist = modelProviderAllowlist();
     const fundedProviders = new Set(
       (
         await Promise.all(
-          [...new Set(configured.map((entry) => entry.provider))].map(async (provider) =>
-            (await hasHostedModelCredits(deps.prisma, actor, provider, true)) ? provider : null,
-          ),
+          [...new Set(configured.map((entry) => entry.provider))]
+            .filter((provider) => modelProviderAllowed(allowlist, provider))
+            .map(async (provider) =>
+              (await hasHostedModelCredits(deps.prisma, actor, provider, true)) ? provider : null,
+            ),
         )
       ).filter((provider): provider is string => provider !== null),
     );
@@ -215,10 +224,15 @@ export function createRouterContext(deps: RouterDeps) {
         auth,
         applyProviderLiveCatalog(codexMerged, auth, providerLive, selected),
       ),
-      ...(role === "approval" ? decisionModelCatalog() : []),
+      ...(role === "approval"
+        ? decisionModelCatalog().filter((entry) =>
+            modelProviderAllowed(modelProviderAllowlist(), entry.provider),
+          )
+        : []),
     ];
     for (const offering of approved) {
       if (
+        !modelProviderAllowed(modelProviderAllowlist(), offering.provider) ||
         !fundedProviders.has(offering.provider) ||
         merged.some(
           (entry) => entry.provider === offering.provider && entry.id === offering.modelId,
@@ -292,23 +306,35 @@ export function createRouterContext(deps: RouterDeps) {
       );
   };
 
-  // Shown where a member chose no model, so the list names what actually runs.
-  const withDeploymentDefault = async (
+  // Shown where a member chose no model, so the list names what actually runs and whether
+  // the deployment pays for it.
+  const deploymentDefault = async (
     actor: Actor,
     role: ModelRole,
-    settings: ModelRoleSettings,
-  ): Promise<ModelRoleView> => {
-    const defaults =
-      role === "main"
-        ? {
-            settings: await deps.prisma.deploymentSettings.findUnique({ where: { id: "default" } }),
-            // Only a model the deployment can run stands in for the member's choice.
-            deployment: deps.env.deploymentModelConfigured
-              ? { provider: deps.env.defaultProvider, model: deps.env.defaultModel }
-              : null,
-          }
-        : { env: process.env, includedApproval: deps.billing?.modelCreditsEnabled === true };
-    let deploymentPrimary = deploymentModelRole(role, defaults).primary;
+  ): Promise<Pick<ModelRoleView, "deploymentPrimary" | "deploymentIncluded">> => {
+    if (role === "main") {
+      const settings = await deps.prisma.deploymentSettings.findUnique({
+        where: { id: "default" },
+      });
+      if (!deps.env.deploymentModelConfigured && !adminDeploymentModel(settings))
+        return { deploymentPrimary: null };
+      const access = await bestEffort(
+        "read main model default funding",
+        deploymentModelAccess(deps, actor, settings),
+      );
+      return {
+        deploymentPrimary: access?.hasDeployment
+          ? deploymentModelRole(role, {
+              settings,
+              deployment: { provider: deps.env.defaultProvider, model: deps.env.defaultModel },
+            }).primary
+          : null,
+      };
+    }
+    const creditsEnabled = deps.billing?.modelCreditsEnabled === true;
+    let deploymentPrimary = deploymentModelRole(role, {
+      includedApproval: creditsEnabled,
+    }).primary;
     if (
       role === "approval" &&
       deploymentPrimary &&
@@ -329,11 +355,18 @@ export function createRouterContext(deps: RouterDeps) {
       } catch (error) {
         if (!(error instanceof SecretStoreUnavailableError)) throw error;
         await bestEffort("read approval model default", Promise.reject(error));
-        // This view is advisory; a temporary outage must not fail an already committed save.
+        // Approval availability is advisory, so a temporary outage can omit the default.
         deploymentPrimary = null;
       }
     }
-    return { ...settings, deploymentPrimary };
+    return role === "approval" &&
+      deploymentPrimary &&
+      deploymentPaysForReview(
+        { provider: deploymentPrimary.provider, model: deploymentPrimary.modelId },
+        creditsEnabled,
+      )
+      ? { deploymentPrimary, deploymentIncluded: true }
+      : { deploymentPrimary };
   };
   /**
    * The main role also says whether its model reads images where runs use it, so settings
@@ -474,6 +507,7 @@ export function createRouterContext(deps: RouterDeps) {
     if (choices.length === 0) return;
     const catalog = await modelRoleCatalog(actor, role, reads);
     for (const choice of choices) {
+      assertModelProviderAllowed(choice.provider);
       const entry = catalog.find(
         (entry) =>
           entry.provider === canonicalPiProviderId(choice.provider) && entry.id === choice.modelId,
@@ -582,7 +616,7 @@ export function createRouterContext(deps: RouterDeps) {
     home: deps.home,
     dataDir: deps.dataDir,
   });
-  const agentSkills = createAgentSkillsService(deps.prisma);
+  const agentSkills = createAgentSkillsService(deps.prisma, deps.events);
 
   const signedIn = os.middleware(async ({ context, next }) => {
     const actor = context.actor;
@@ -651,7 +685,7 @@ export function createRouterContext(deps: RouterDeps) {
     agentImportServices,
     chatCatalog,
     withServingConnections,
-    withDeploymentDefault,
+    deploymentDefault,
     withImageInput,
     modelRoleCatalog,
     validateRoleChoices,

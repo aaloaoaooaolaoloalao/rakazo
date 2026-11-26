@@ -16,6 +16,12 @@ export function sparkDefaultBotSystemPrompt(hasComputerObserve: boolean): string
 }
 
 export function sparkConciseReplyGuidanceForTrigger(trigger: string): string | undefined {
-  if (trigger === "reaction" || isBackgroundRunTrigger(trigger)) return undefined;
+  if (
+    trigger === "reaction" ||
+    trigger === "routine" ||
+    trigger === "webhook" ||
+    isBackgroundRunTrigger(trigger)
+  )
+    return undefined;
   return SPARK_CONCISE_REPLY_GUIDANCE;
 }

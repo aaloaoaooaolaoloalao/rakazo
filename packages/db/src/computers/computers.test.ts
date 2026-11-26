@@ -6,6 +6,7 @@ import {
   computerHomeKey,
   computerScopeKey,
   ensureComputerRecord,
+  newComputerKind,
   resolveMaxComputersPerUser,
   restoreBotUnderComputerQuota,
 } from "./computers.js";
@@ -345,8 +346,8 @@ describe("ensureComputerRecord", () => {
 
   it("reuses the team computer when the transaction client still exposes $transaction", async () => {
     delete process.env.SANDBOX_MAX_COMPUTERS_PER_USER;
-    const prisma = fakePrisma(0, true) as PrismaClient & { $transaction: ReturnType<typeof vi.fn> };
-    prisma.$transaction = vi.fn();
+    const prisma = fakePrisma(0, true);
+    prisma.$transaction = vi.fn() as PrismaClient["$transaction"];
     await expect(
       ensureComputerRecord(prisma, { ...baseInput, mode: "team" }),
     ).resolves.toMatchObject({ id: "existing" });
@@ -511,5 +512,13 @@ describe("restoreBotUnderComputerQuota", () => {
       computerId: "computer-a",
     });
     expect(inUse()).toBe(1);
+  });
+});
+
+describe("newComputerKind", () => {
+  it("puts a new bot on the host machine only once this Mac was chosen", () => {
+    expect(newComputerKind("local-vm", "this-mac")).toBe("desktop");
+    expect(newComputerKind("local-vm", "docker")).toBe("local-vm");
+    expect(newComputerKind("local-vm", null)).toBe("local-vm");
   });
 });

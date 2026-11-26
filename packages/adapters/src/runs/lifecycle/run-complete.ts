@@ -19,6 +19,7 @@ import {
 } from "../../memory/conversation-memory.js";
 import { returnBotMessageOutcome } from "../../messaging/bot-messages.js";
 import { clearRoutineBackoff } from "../../routines/routine-backoff.js";
+import { deleteSpentRoutine } from "../../routines/routine-end.js";
 import { isStrategicInitiativeRun } from "../../routines/strategic-initiative.js";
 import {
   COMPACTION_BATCH_SIZE,
@@ -41,7 +42,7 @@ import {
   stripNoResponseReply,
   stripStrayNoResponse,
 } from "../assembly/silent-reply.js";
-import { saveLatestStepScreenshot } from "../turn/tool-step-calls.js";
+import { keptTurnTranscript, saveLatestStepScreenshot } from "../turn/tool-step-calls.js";
 import { enqueueSteeringContinuation, renewRunLease } from "./run-lifecycle.js";
 import {
   completionMarksUnread,
@@ -149,11 +150,21 @@ export async function completeRun(ctx: RunContext) {
     outcome: "completed",
     blocks,
     markUnread: !groupSilentEnd && marksUnread,
+    // Only a reply that holds the whole turn stands for it; earlier messages of this run would
+    // sit between the turn's prompt and the reply.
+    ...(reply.transcript && blocks.length > 0 && !reply.publishedMidTurnUserMessage
+      ? { transcript: keptTurnTranscript(reply.transcript, ctx.secrets) }
+      : {}),
   });
   if (!completed) return;
   ctx.stopHeartbeatAfterCompletion();
   if (run.trigger === "routine" && run.routineId) {
     await clearRoutineBackoff(deps, { routineId: run.routineId, userId: run.userId });
+    await deleteSpentRoutine(deps, {
+      spaceId: run.spaceId,
+      routineId: run.routineId,
+      userId: run.userId,
+    });
   }
   const { screenRelease } = ctx.state.computerUse;
   if (screenRelease) screenRelease.keepWarm = true;
@@ -241,7 +252,7 @@ async function finalReply(ctx: RunContext) {
   const { run } = ctx;
   const { reply } = ctx.state;
   // Preserve the last held-back preview as a normal final reply when the
-  // model supplies none, unless it chose silence or already delivered that text.
+  // model supplies none, unless it chose silence or its last interim message already says it.
   // Persisting peer results here also lets outcome delivery retry after completion.
   recordExplicitNoResponse(reply, reply.lastDiscardedMidTurnNarration);
   // When nothing follows the last step, the notes since the last interim message are the reply.
@@ -269,7 +280,7 @@ async function finalReply(ctx: RunContext) {
     !reply.explicitNoResponse &&
     !reply.assembled.trim() &&
     reply.lastDiscardedMidTurnNarration &&
-    !reply.midTurnUserTexts.includes(reply.lastDiscardedMidTurnNarration)
+    reply.midTurnUserTexts.at(-1) !== reply.lastDiscardedMidTurnNarration
   ) {
     reply.assembled = reply.lastDiscardedMidTurnNarration;
     reply.currentTextSegment = reply.assembled;

@@ -8,7 +8,7 @@ import { useSignOut } from "../../lib/auth/sign-out";
 import type { ModelCatalogEntry } from "../../lib/models/model-auth";
 import { rpc } from "../../lib/query/rpc";
 import { errorText } from "../../lib/query/user-error";
-import { ensureFirstBot, FirstBotRetry } from "./first-bot";
+import { FirstBotRetry } from "./first-bot";
 import { ModelStep } from "./model-step";
 import { useOnboardingModel } from "./use-onboarding-model";
 
@@ -16,14 +16,12 @@ export function OnboardingPage() {
   const { t } = useLingui();
   const navigate = useNavigate();
   const fieldId = useId();
-  // The URL holds the survey and model steps, so /onboarding/survey and /onboarding/model open directly.
   const { step: routeStep } = useParams();
   const linkedStep = routeStep === "survey" || routeStep === "model" ? routeStep : undefined;
   const [creatingBot, setCreatingBot] = useState(false);
   const [surveyDone, setSurveyDone] = useState(false);
   const step = creatingBot ? "bot" : surveyDone ? "loading" : (linkedStep ?? "loading");
   const [billingEnabled, setBillingEnabled] = useState(false);
-  // The step after the survey; null until me loads.
   const [afterSurvey, setAfterSurvey] = useState<"model" | "bot" | null>(null);
   const [catalog, setCatalog] = useState<ModelCatalogEntry[]>([]);
   const model = useOnboardingModel({
@@ -77,17 +75,10 @@ export function OnboardingPage() {
     createStartedRef.current = true;
     setError(null);
     try {
-      const bot = await ensureFirstBot();
-      // Onboarding continues conversationally in the thread: greeting first,
-      // then the focus choice (immediate for the first bot).
-      const started = await rpc.onboarding
-        .start({ botId: bot.id })
-        .then(() => true)
-        .catch(() => false);
-      if (started) {
-        await rpc.onboarding.promptFocus({ botId: bot.id }).catch(() => undefined);
-      }
-      navigate(`/app/${bot.id}`);
+      // The server creates and greets Chief only in a Space that never held a chat; otherwise
+      // the app shows the Space as it is.
+      const { botId } = await rpc.onboarding.firstBot();
+      navigate(botId ? `/app/${botId}` : "/app");
     } catch (err) {
       createStartedRef.current = false;
       setError(errorText(err, t`Could not create your bot`));
@@ -99,7 +90,6 @@ export function OnboardingPage() {
     void createFirstBot();
   }, [step]);
 
-  // Loading, and creating the first bot, both wait on one spinner until the chat opens.
   if (step === "loading" || (step === "bot" && !error)) return <PageLoading />;
 
   return (

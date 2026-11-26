@@ -45,6 +45,8 @@ export {
   openAgentImportArchive,
   safeArchivePath,
 } from "./archive.js";
+export type { AgentImportAssistant } from "./assistants.js";
+export { AGENT_IMPORT_ASSISTANTS } from "./assistants.js";
 export {
   AGENT_IMPORT_PROVIDER_KEYS,
   hasAgentImportSecrets,
@@ -65,7 +67,6 @@ export type {
   RoutineTriggersAvailable,
 } from "./grok-bot.js";
 export {
-  GROK_BOT_EXPORT_PROMPT,
   GROK_BOT_REPLY_MAX_LENGTH,
   GrokBotExportError,
   grokBotExportJson,
@@ -75,9 +76,11 @@ export {
   parseGrokBotExport,
   readGrokBotExportJson,
 } from "./grok-bot.js";
+export { GROK_BOT_EXPORT_PROMPT } from "./grok-bot.prompt.js";
 export { bundledSkillNames } from "./hermes.js";
+export { agentImportSelection, agentImportUncheckedByDefault } from "./selection.js";
 export type { AgentImportReader, SkillFiles } from "./types.js";
-export { renameSkillMd } from "./types.js";
+export { agentImportLeftoverMessages, renameSkillMd } from "./types.js";
 
 export const AGENT_IMPORT_NOT_FOUND = "No OpenClaw, Hermes or agent document found.";
 
@@ -373,6 +376,7 @@ function plan(source: AgentImportSource, parsed: AgentImportParse): AgentImportP
       mcpServers: [],
       routines: [],
       apiKeys: [],
+      leftovers: (parsed.leftovers ?? []).map(flag),
     },
     { spaceMemoryPaths: [], skillNames: [] },
   );
