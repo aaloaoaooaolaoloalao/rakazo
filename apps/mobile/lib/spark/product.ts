@@ -14,13 +14,53 @@ export function sparkProductEnabled(): boolean {
 }
 
 export function showModelSettings(): boolean {
-  return !(sparkProductEnabled() && PRODUCT_UI.hideUserModelSettings);
+  return sparkShown(PRODUCT_UI.hideUserModelSettings);
 }
 
 export function showVoiceSettings(): boolean {
-  return !(sparkProductEnabled() && PRODUCT_UI.hideUserVoiceSettings);
+  return sparkShown(PRODUCT_UI.hideUserVoiceSettings);
 }
 
 export function showPasskeys(): boolean {
-  return !(sparkProductEnabled() && PRODUCT_UI.hidePasskeys);
+  return sparkShown(PRODUCT_UI.hidePasskeys);
+}
+
+export function showBilling(): boolean {
+  return sparkShown(PRODUCT_UI.hideBilling);
+}
+
+export function showWallet(): boolean {
+  return sparkShown(PRODUCT_UI.hideWallet);
+}
+
+export function showSpendingLimits(): boolean {
+  return sparkShown(PRODUCT_UI.hideSpendingLimits);
+}
+
+export function showLabs(): boolean {
+  return sparkShown(PRODUCT_UI.hideLabs);
+}
+
+export function showAppleWatch(): boolean {
+  return sparkShown(PRODUCT_UI.hideAppleWatch);
+}
+
+export function showWidgets(): boolean {
+  return sparkShown(PRODUCT_UI.hideWidgets);
+}
+
+export function showSignupSurvey(): boolean {
+  return sparkShown(PRODUCT_UI.hideSignupSurvey);
+}
+
+export function showMeetings(): boolean {
+  return sparkShown(PRODUCT_UI.hideMeetings);
+}
+
+export function showOrganizations(): boolean {
+  return sparkShown(PRODUCT_UI.hideOrganizations);
+}
+
+function sparkShown(hidden: boolean): boolean {
+  return !(sparkProductEnabled() && hidden);
 }

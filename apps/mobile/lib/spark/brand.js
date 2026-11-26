@@ -141,7 +141,9 @@ function rewriteEas(eas, ids) {
   const experimental = asRecord(build?.experimental);
   const ios = asRecord(experimental?.ios);
   const appExtensions = Array.isArray(ios?.appExtensions)
-    ? ios.appExtensions.map((entry) => rewriteExtension(entry, ids))
+    ? ios.appExtensions
+        .map((entry) => rewriteExtension(entry, ids))
+        .filter((entry) => entry != null)
     : undefined;
   return {
     ...record,
@@ -174,6 +176,16 @@ function rewriteEas(eas, ids) {
 function rewriteExtension(entry, ids) {
   const ext = asRecord(entry);
   if (!ext) return entry;
+  const targetName = typeof ext.targetName === "string" ? ext.targetName : "";
+  const bundle = typeof ext.bundleIdentifier === "string" ? ext.bundleIdentifier : "";
+  // The watch app is the Apple Watch entry. Spark builds leave it out.
+  if (
+    targetName === "RakazoWatch" ||
+    targetName === "RakazoWatchComplications" ||
+    bundle.includes(".watchkitapp")
+  ) {
+    return null;
+  }
   const bundleIdentifier =
     typeof ext.bundleIdentifier === "string"
       ? nextExtensionId(ext.bundleIdentifier, ids)
@@ -214,10 +226,12 @@ function nextExtensionId(bundleIdentifier, ids) {
 
 function renamePlugins(plugins, name, appGroup) {
   if (!plugins) return plugins;
-  return plugins.map((plugin) => {
-    if (!Array.isArray(plugin)) return plugin;
-    const [id, options] = plugin;
-    if (!options || typeof options !== "object") return plugin;
+  return plugins.flatMap((plugin) => {
+    const id = Array.isArray(plugin) ? plugin[0] : plugin;
+    if (id === "./plugins/with-apple-watch") return [];
+    if (!Array.isArray(plugin)) return [plugin];
+    const [, options] = plugin;
+    if (!options || typeof options !== "object") return [plugin];
     const next = renamePermissionTree(options, name);
     if (id === "expo-sharing") {
       const ios = asRecord(next.ios) ?? {};
@@ -229,7 +243,7 @@ function renamePlugins(plugins, name, appGroup) {
       const dark = asRecord(next.dark);
       if (dark) next.dark = { ...dark, backgroundColor: SPARK_SPLASH_BACKGROUND };
     }
-    return [id, next];
+    return [[id, next]];
   });
 }
 

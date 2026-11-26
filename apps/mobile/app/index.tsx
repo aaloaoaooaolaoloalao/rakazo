@@ -113,6 +113,7 @@ import {
   subscribeOrganizationSwitch,
   useOrganizations,
 } from "../lib/spaces/organizations";
+import { showOrganizations } from "../lib/spark/product";
 import { confirmUnsentSendLoss } from "../lib/thread/send/unsent-send-warning";
 
 /** A row counts as on screen as soon as any of it shows. */
@@ -659,13 +660,15 @@ function Home({ embedded, onSelectSpace, onShareSelect }: InboxPaneProps & { emb
   const runCreateAction = useCallback(
     (action: CreateAction) => {
       if (action === "bot") newBot();
+      else if (action === "space" && !showOrganizations()) return;
       else openCreate(action === "group" ? "/new-group" : "/new-space");
     },
     [newBot, openCreate],
   );
 
   const organizations = useOrganizations(hasSession && !onShareSelect).data;
-  const hasOrganizationMenu = organizationSwitchActions(organizations).length > 0;
+  const hasOrganizationMenu =
+    showOrganizations() && organizationSwitchActions(organizations).length > 0;
   const headerTitle = useMemo(
     () => (hasOrganizationMenu ? () => <OrganizationTitleMenu list={organizations} /> : undefined),
     [hasOrganizationMenu, organizations],

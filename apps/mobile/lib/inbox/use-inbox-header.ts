@@ -4,7 +4,7 @@ import type { ReactNode } from "react";
 import { useLayoutEffect } from "react";
 import { useUiLocale } from "../i18n/i18n";
 import type { CreateAction } from "./create-chooser";
-import { createMenuItems } from "./create-chooser";
+import { visibleCreateMenuItems } from "./create-chooser";
 
 /**
  * Liquid Glass home header: activity and search together on the right, and create on its own
@@ -65,7 +65,7 @@ export function useInboxHeader({
           // Creating is a different kind of action from the ways of looking at chats beside it.
           sharesBackground: false,
           menu: {
-            items: createMenuItems.map(({ id, label, sfSymbol }) => ({
+            items: visibleCreateMenuItems().map(({ id, label, sfSymbol }) => ({
               type: "action" as const,
               label: i18n._(label),
               icon: { type: "sfSymbol" as const, name: sfSymbol },

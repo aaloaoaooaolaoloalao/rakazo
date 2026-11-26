@@ -1,5 +1,15 @@
 import type { Href } from "expo-router";
-import { showModelSettings, showVoiceSettings } from "../spark/product";
+import {
+  showBilling,
+  showLabs,
+  showMeetings,
+  showModelSettings,
+  showOrganizations,
+  showSignupSurvey,
+  showSpendingLimits,
+  showVoiceSettings,
+  showWallet,
+} from "../spark/product";
 
 // On iOS a screen opened on the root stack while the settings sheet is open is presented as a
 // second sheet over it, so navigation that leaves settings closes the sheet first.
@@ -97,9 +107,44 @@ export function isSettingsLink(link: string): boolean {
 }
 
 function showSettingsScreen(screen: string): boolean {
-  if (screen === "models" || screen === "model-settings") return showModelSettings();
-  if (screen === "voice") return showVoiceSettings();
-  return true;
+  switch (screen) {
+    case "models":
+    case "model-settings":
+    case "model-picker":
+    case "model-connection":
+    case "chat-model":
+    case "bot-model":
+      return showModelSettings();
+    case "voice":
+      return showVoiceSettings();
+    case "billing":
+      return showBilling();
+    case "wallet":
+      return showWallet();
+    case "spending-limit":
+      return showSpendingLimits();
+    case "labs":
+      return showLabs();
+    case "signup-survey":
+      return showSignupSurvey();
+    case "organization":
+    case "organization-members":
+    case "spaces":
+    case "space":
+      return showOrganizations();
+    default:
+      return true;
+  }
+}
+
+export function showSparkRoute(screen: string): boolean {
+  if (screen === "paywall") return showBilling();
+  if (screen === "board") return showLabs();
+  if (screen === "meetings" || screen === "meeting-calendar" || screen === "meeting-transcript")
+    return showMeetings();
+  if (screen === "new-organization" || screen === "new-space" || screen === "space-members")
+    return showOrganizations();
+  return showSettingsScreen(screen);
 }
 
 /** The Settings return marker belongs to navigation inside this app. */

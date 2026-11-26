@@ -21,8 +21,10 @@ import { native, useThemedStyles } from "../lib/native/native";
 import { useScreenHeader } from "../lib/navigation/screen-header";
 import { rpcQuery, useSave } from "../lib/query/query";
 import { useScreenQuery } from "../lib/query/screen-query";
+import { showMeetings } from "../lib/spark/product";
+import { sparkScreen } from "../lib/spark/spark-screen";
 
-export default function MeetingsScreen() {
+function MeetingsScreen() {
   const { t } = useLingui();
   const dateLocale = useDateLocale();
   const router = useRouter();
@@ -176,4 +178,8 @@ function createStyles() {
     note: { color: native.secondaryLabel },
     error: { color: mobileTokens().destructive },
   });
+}
+
+export default function MeetingsScreenRoute() {
+  return sparkScreen(showMeetings(), <MeetingsScreen />);
 }

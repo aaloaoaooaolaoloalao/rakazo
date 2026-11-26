@@ -41,6 +41,7 @@ import type { SaveSend } from "../../lib/query/query";
 import { queryClient, rpcQuery, useSave } from "../../lib/query/query";
 import { ACCOUNT_SETTINGS, settingsTarget } from "../../lib/query/settings-target";
 import { showModelSettings } from "../../lib/spark/product";
+import { sparkScreen } from "../../lib/spark/spark-screen";
 
 const noModels: MobileModel[] = [];
 const noCredentials: MobileModelCredential[] = [];
@@ -408,6 +409,5 @@ function createModelsStyles() {
 }
 
 export default function ModelsScreen() {
-  if (!showModelSettings()) return null;
-  return <Models />;
+  return sparkScreen(showModelSettings(), <Models />);
 }

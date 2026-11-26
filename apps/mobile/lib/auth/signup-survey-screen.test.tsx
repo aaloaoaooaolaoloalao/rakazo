@@ -14,6 +14,7 @@ const state = vi.hoisted(() => ({
   close: vi.fn(),
 }));
 
+vi.mock("expo-router", () => ({ Redirect: () => null }));
 vi.mock("../layout/side-insets", () => ({ useSideInsets: () => ({}) }));
 vi.mock("../api/api", () => ({
   rpc: state.rpc,

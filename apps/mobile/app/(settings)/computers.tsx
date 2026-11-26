@@ -29,6 +29,7 @@ import { native, useThemedStyles } from "../../lib/native/native";
 import { accountQuery, queryClient, rpcQuery, useSave } from "../../lib/query/query";
 import { useScreenQuery } from "../../lib/query/screen-query";
 import { ACCOUNT_SETTINGS } from "../../lib/query/settings-target";
+import { showBilling } from "../../lib/spark/product";
 
 type CloudComputer = CloudComputers["computers"][number];
 
@@ -103,10 +104,16 @@ export default function ComputersSettings() {
     const choice = computerSizeChoice(size, computer, cloud.available);
     if (choice === "unchanged") return;
     if (choice === "upgrade") {
-      Alert.alert(t`Your plan does not include this size.`, undefined, [
-        { text: t`Cancel`, style: "cancel" },
-        { text: t`Upgrade`, onPress: () => router.push("/billing") },
-      ]);
+      Alert.alert(
+        t`Your plan does not include this size.`,
+        undefined,
+        showBilling()
+          ? [
+              { text: t`Cancel`, style: "cancel" },
+              { text: t`Upgrade`, onPress: () => router.push("/billing") },
+            ]
+          : [{ text: t`OK` }],
+      );
       return;
     }
     setResized(null);

@@ -47,6 +47,7 @@ import { queryClient, rpcQuery } from "../../lib/query/query";
 import type { SettingsTarget } from "../../lib/query/settings-target";
 import { settingsRpc, settingsTarget } from "../../lib/query/settings-target";
 import { showVoiceSettings } from "../../lib/spark/product";
+import { sparkScreen } from "../../lib/spark/spark-screen";
 import { loadDeviceVoiceEnabled, saveDeviceVoiceEnabled } from "../../lib/voice/device-voice";
 import { speakText } from "../../lib/voice/voice";
 import { createVoiceStyles } from "../../lib/voice/voice-settings-styles";
@@ -999,6 +1000,5 @@ function VoiceSettings() {
 }
 
 export default function VoiceSettingsScreen() {
-  if (!showVoiceSettings()) return null;
-  return <VoiceSettings />;
+  return sparkScreen(showVoiceSettings(), <VoiceSettings />);
 }

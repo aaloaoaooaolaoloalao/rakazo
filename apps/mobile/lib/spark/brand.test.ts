@@ -34,6 +34,8 @@ const upstream: ExpoConfig = {
       { microphonePermission: "Rakazo uses the microphone for voice calls with your bots." },
     ],
     ["expo-sharing", { ios: { enabled: true, appGroupId: "group.com.rakazo.app" } }],
+    "./plugins/with-apple-watch",
+    "./plugins/with-app-intents",
   ],
   ios: {
     bundleIdentifier: "com.rakazo.app",
@@ -119,8 +121,9 @@ describe("SparkAI brand overlay", () => {
     expect(extensions.map((entry) => entry.bundleIdentifier)).toEqual([
       "com.alonshelly.sparkai.notification",
       "com.alonshelly.sparkai.widgets",
-      "com.alonshelly.sparkai.watchkitapp",
     ]);
+    expect(branded.plugins).not.toContain("./plugins/with-apple-watch");
+    expect(branded.plugins).toContain("./plugins/with-app-intents");
     expect(branded.ios?.infoPlist?.NSCameraUsageDescription).toBe(
       "SparkAI uses the camera so you can attach photos to a bot message.",
     );

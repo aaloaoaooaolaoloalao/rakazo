@@ -6,7 +6,10 @@ vi.mock("../appearance/material-icons", () => ({
   materialIcons: { person_add: 101, group: 102, grid_view: 103 },
 }));
 
-afterEach(() => resetI18nForTests());
+afterEach(() => {
+  resetI18nForTests();
+  vi.unstubAllEnvs();
+});
 
 describe("create menu", () => {
   it("uses SF Symbols on iOS, in the app language", () => {
@@ -32,5 +35,10 @@ describe("create menu", () => {
 
   it.each(["", "other", "Bot", "person_add", "constructor"])("rejects %s", (id) => {
     expect(isCreateAction(id)).toBe(false);
+  });
+
+  it("drops a new Space from the create menu on Spark", () => {
+    vi.stubEnv("EXPO_PUBLIC_SPARK", "1");
+    expect(createMenuActions("ios").map(({ id }) => id)).toEqual(["bot", "group"]);
   });
 });

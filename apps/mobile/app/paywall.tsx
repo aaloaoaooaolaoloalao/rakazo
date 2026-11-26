@@ -62,6 +62,8 @@ import {
   organizationSwitchActions,
   useOrganizations,
 } from "../lib/spaces/organizations";
+import { showBilling } from "../lib/spark/product";
+import { sparkScreen } from "../lib/spark/spark-screen";
 import { confirmUnsentSendLoss } from "../lib/thread/send/unsent-send-warning";
 
 type Amount = (typeof MODEL_CREDIT_AMOUNTS)[number];
@@ -82,7 +84,7 @@ const CREW = [
  * The plan choice. Shown over the app until the organization can run bots, and from Billing
  * (`?dismissible=1`) to pick a plan without leaving what was open.
  */
-export default function Paywall() {
+function Paywall() {
   const { t } = useLingui();
   const dateLocale = useDateLocale();
   const tokens = useMobileTokens();
@@ -803,3 +805,7 @@ const styles = StyleSheet.create({
   failed: { alignItems: "center", gap: 14, paddingHorizontal: 32 },
   done: { flex: 1, alignItems: "center", justifyContent: "center", gap: 14, paddingHorizontal: 32 },
 });
+
+export default function PaywallRoute() {
+  return sparkScreen(showBilling(), <Paywall />);
+}

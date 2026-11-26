@@ -65,6 +65,7 @@ import { native, useThemedStyles } from "../../lib/native/native";
 import { useScreenHeader } from "../../lib/navigation/screen-header";
 import { ACCOUNT_SETTINGS, settingsRpc } from "../../lib/query/settings-target";
 import { showModelSettings } from "../../lib/spark/product";
+import { sparkScreen } from "../../lib/spark/spark-screen";
 
 type ModelSelection = {
   modelId?: string;
@@ -912,6 +913,5 @@ function ModelConnection() {
 }
 
 export default function ModelConnectionRoute() {
-  if (!showModelSettings()) return null;
-  return <ModelConnection />;
+  return sparkScreen(showModelSettings(), <ModelConnection />);
 }

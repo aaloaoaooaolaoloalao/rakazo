@@ -12,6 +12,7 @@ import { errorText } from "../lib/api/user-error";
 import { rpcQuery, useSave } from "../lib/query/query";
 import { useScreenQuery } from "../lib/query/screen-query";
 import { showModelSettings } from "../lib/spark/product";
+import { sparkScreen } from "../lib/spark/spark-screen";
 
 /** A chat's model and thinking, opened from the composer; each change saves at once. */
 function ChatModelScreen() {
@@ -110,6 +111,5 @@ function ChatModelScreen() {
 }
 
 export default function ChatModelRoute() {
-  if (!showModelSettings()) return null;
-  return <ChatModelScreen />;
+  return sparkScreen(showModelSettings(), <ChatModelScreen />);
 }

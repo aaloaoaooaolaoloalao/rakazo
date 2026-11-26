@@ -26,6 +26,8 @@ import { targetRpcQuery, useSave } from "../../lib/query/query";
 import { useScreenQuery } from "../../lib/query/screen-query";
 import { ACCOUNT_SETTINGS } from "../../lib/query/settings-target";
 import { refreshOrganizations } from "../../lib/spaces/organizations";
+import { showOrganizations } from "../../lib/spark/product";
+import { sparkScreen } from "../../lib/spark/spark-screen";
 
 type Change =
   | { kind: "invite"; email: string }
@@ -34,7 +36,7 @@ type Change =
   | { kind: "cancel"; invitation: OrganizationInvitation };
 
 /** Everyone in the organization; its owner and admins also invite, change roles and remove. */
-export default function OrganizationMembersScreen() {
+function OrganizationMembersScreen() {
   const { t } = useLingui();
   const styles = useThemedStyles(createStyles);
   const tokens = useMobileTokens();
@@ -264,4 +266,8 @@ function createStyles() {
     screen: { flex: 1, backgroundColor: native.groupedPage },
     content: { width: "100%", padding: 20, gap: 24, paddingBottom: 40 },
   });
+}
+
+export default function OrganizationMembersScreenRoute() {
+  return sparkScreen(showOrganizations(), <OrganizationMembersScreen />);
 }

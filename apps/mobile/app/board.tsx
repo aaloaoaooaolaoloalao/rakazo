@@ -12,9 +12,11 @@ import { native, useThemedStyles } from "../lib/native/native";
 import { queryClient, rpcQuery, useSave } from "../lib/query/query";
 import { useScreenQuery } from "../lib/query/screen-query";
 import { useBackToSettings } from "../lib/settings/back-to-settings";
+import { showLabs } from "../lib/spark/product";
+import { sparkScreen } from "../lib/spark/spark-screen";
 
 /** The Space's ticket board: every column, with the status changed in place. */
-export default function BoardScreen() {
+function BoardScreen() {
   useBackToSettings();
   const { t } = useLingui();
   const styles = useThemedStyles(createStyles);
@@ -98,4 +100,8 @@ function createStyles() {
     empty: { alignItems: "center", gap: 8 },
     message: { color: native.secondaryLabel, fontSize: 17, textAlign: "center" },
   });
+}
+
+export default function BoardScreenRoute() {
+  return sparkScreen(showLabs(), <BoardScreen />);
 }

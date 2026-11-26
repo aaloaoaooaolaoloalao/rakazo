@@ -7,6 +7,7 @@ import { errorText } from "../lib/api/user-error";
 import { rpcQuery } from "../lib/query/query";
 import { useScreenQuery } from "../lib/query/screen-query";
 import { showModelSettings } from "../lib/spark/product";
+import { sparkScreen } from "../lib/spark/spark-screen";
 
 function BotModelScreen() {
   const { t } = useLingui();
@@ -45,6 +46,5 @@ function BotModelScreen() {
 }
 
 export default function BotModelRoute() {
-  if (!showModelSettings()) return null;
-  return <BotModelScreen />;
+  return sparkScreen(showModelSettings(), <BotModelScreen />);
 }

@@ -2,6 +2,7 @@ import type { MenuAction } from "@expo/ui/community/menu";
 import { i18n } from "@lingui/core";
 import { msg } from "@lingui/core/macro";
 import { materialIcons } from "../appearance/material-icons";
+import { showOrganizations } from "../spark/product";
 
 export type CreateAction = "bot" | "group" | "space";
 
@@ -21,8 +22,12 @@ export const createMenuItems = [
   },
 ] as const;
 
+export function visibleCreateMenuItems() {
+  return createMenuItems.filter((item) => item.id !== "space" || showOrganizations());
+}
+
 export function createMenuActions(platform: string): MenuAction[] {
-  return createMenuItems.map(({ id, label, sfSymbol, materialIcon }) => ({
+  return visibleCreateMenuItems().map(({ id, label, sfSymbol, materialIcon }) => ({
     id,
     title: i18n._(label),
     image: platform === "ios" ? sfSymbol : materialIcons[materialIcon],

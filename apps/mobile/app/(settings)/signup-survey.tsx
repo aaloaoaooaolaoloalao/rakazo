@@ -26,11 +26,13 @@ import { native, useThemedStyles } from "../../lib/native/native";
 import { useSave } from "../../lib/query/query";
 import { ACCOUNT_SETTINGS } from "../../lib/query/settings-target";
 import { closeSettingsSheet } from "../../lib/settings/settings-sheet";
+import { showSignupSurvey } from "../../lib/spark/product";
+import { sparkScreen } from "../../lib/spark/spark-screen";
 
 type Use = NonNullable<SignupSurveyAnswers["use"]>;
 
 /** Optional questions shown once after signing up on a billing deployment. */
-export default function SignupSurvey() {
+function SignupSurvey() {
   const call = useContext(CallKeyboardContext);
   const sideInsets = useSideInsets();
   const { t } = useLingui();
@@ -172,4 +174,8 @@ function createStyles() {
     },
     multiline: { minHeight: 96 },
   });
+}
+
+export default function SignupSurveyRoute() {
+  return sparkScreen(showSignupSurvey(), <SignupSurvey />);
 }

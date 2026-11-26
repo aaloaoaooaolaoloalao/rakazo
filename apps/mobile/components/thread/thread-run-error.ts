@@ -9,6 +9,7 @@ import { errorText } from "../../lib/api/user-error";
 import { computerHoursOutCopy, runErrorActionLabel } from "../../lib/cards/run-error-presentation";
 import { openModelSettings } from "../../lib/models/model-settings";
 import { queryClient, rpcQuery, useSave } from "../../lib/query/query";
+import { showBilling } from "../../lib/spark/product";
 import { useRunError } from "../cards/run-error-sheet";
 
 /** The chat's failed run: its error, the recovery action, retry, and whether its details are open. */
@@ -48,7 +49,7 @@ export function useThreadRunError(
   const normalizedRunError =
     classified && hoursOut ? { ...classified, summary: hoursOut.summary } : classified;
   const label = needsPlan
-    ? billing?.canManage
+    ? showBilling() && billing?.canManage
       ? (hoursOut?.action ?? null)
       : null
     : normalizedRunError

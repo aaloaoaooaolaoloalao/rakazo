@@ -27,12 +27,14 @@ import { targetRpcQuery, useSave } from "../lib/query/query";
 import { useScreenQuery } from "../lib/query/screen-query";
 import { settingsTarget } from "../lib/query/settings-target";
 import { useBackToSettings } from "../lib/settings/back-to-settings";
+import { showOrganizations } from "../lib/spark/product";
+import { sparkScreen } from "../lib/spark/spark-screen";
 
 /** The menu actions that share a link or email one instead of adding someone from the organization. */
 const LINK_ACTION = "link";
 const EMAIL_ACTION = "email";
 
-export default function SpaceMembersScreen() {
+function SpaceMembersScreen() {
   useBackToSettings();
   const { t } = useLingui();
   const styles = useThemedStyles(createStyles);
@@ -306,4 +308,8 @@ function createStyles() {
     screen: { flex: 1, backgroundColor: native.groupedPage },
     content: { padding: 20, gap: 28 },
   });
+}
+
+export default function SpaceMembersScreenRoute() {
+  return sparkScreen(showOrganizations(), <SpaceMembersScreen />);
 }

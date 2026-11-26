@@ -49,6 +49,7 @@ import { hasIncomingShare } from "../lib/composer/incoming-share";
 import { FORM_COLUMN_WIDTH } from "../lib/layout/adaptive-layout";
 import { useMobileTokens } from "../lib/native/native";
 import { queryClient, rpcQuery } from "../lib/query/query";
+import { showSignupSurvey } from "../lib/spark/product";
 import { confirmUnsentSendLoss } from "../lib/thread/send/unsent-send-warning";
 
 const CODE_LENGTH = 6;
@@ -240,7 +241,7 @@ export default function SignIn() {
   async function openApp() {
     if (hasIncomingShare()) return router.replace("/share");
     const me = await fetchFresh(queryClient, rpcQuery("me")).catch(() => null);
-    router.replace(me?.needsSignupSurvey ? "/signup-survey" : "/");
+    router.replace(showSignupSurvey() && me?.needsSignupSurvey ? "/signup-survey" : "/");
   }
 
   function startProvider(provider: (typeof providers)[number]) {

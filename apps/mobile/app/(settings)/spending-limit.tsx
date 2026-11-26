@@ -24,9 +24,11 @@ import { native } from "../../lib/native/native";
 import { accountRpcQuery, formRead, queryClient, useSave } from "../../lib/query/query";
 import { useScreenQuery } from "../../lib/query/screen-query";
 import { ACCOUNT_SETTINGS } from "../../lib/query/settings-target";
+import { showSpendingLimits } from "../../lib/spark/product";
+import { sparkScreen } from "../../lib/spark/spark-screen";
 
 /** The most the user's bots may spend, across every bot and Space. */
-export default function SpendingLimitSettings() {
+function SpendingLimitSettings() {
   const { t } = useLingui();
   const locale = useUiLocale();
   const sideInsets = useSideInsets();
@@ -237,3 +239,7 @@ const styles = StyleSheet.create({
   content: { paddingHorizontal: 16, paddingTop: 16, paddingBottom: 32, gap: 24 },
   compactContent: { paddingHorizontal: 8 },
 });
+
+export default function SpendingLimitSettingsRoute() {
+  return sparkScreen(showSpendingLimits(), <SpendingLimitSettings />);
+}

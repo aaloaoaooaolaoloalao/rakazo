@@ -21,14 +21,15 @@ import { native, useThemedStyles } from "../../lib/native/native";
 import { queryClient, rpcQuery, useSave } from "../../lib/query/query";
 import { settingsTarget } from "../../lib/query/settings-target";
 import { useApprovalSettings } from "../../lib/settings/approval-settings";
-import { showModelSettings, showVoiceSettings } from "../../lib/spark/product";
+import { showModelSettings, showOrganizations, showVoiceSettings } from "../../lib/spark/product";
+import { sparkScreen } from "../../lib/spark/spark-screen";
 
 /**
  * A Space follows the account's models, voice, approvals and vault until one is customized for it.
  * Customizing opens the same screen the account uses, editing the Space's own copy; customized
  * approvals show the same rows as the account's, right here.
  */
-export default function SpaceSettings() {
+function SpaceSettings() {
   const { spaceId } = useLocalSearchParams<{ spaceId?: string }>();
   const target = useMemo(() => settingsTarget(spaceId), [spaceId]);
   const router = useRouter();
@@ -186,4 +187,8 @@ function createStyles() {
     content: { width: "100%", padding: 20, gap: 24, paddingBottom: 40 },
     error: { color: tokens.destructive, fontSize: 14 },
   });
+}
+
+export default function SpaceSettingsRoute() {
+  return sparkScreen(showOrganizations(), <SpaceSettings />);
 }

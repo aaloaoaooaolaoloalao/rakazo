@@ -17,8 +17,10 @@ import {
   switchOrganization,
   useOrganizations,
 } from "../lib/spaces/organizations";
+import { showOrganizations } from "../lib/spark/product";
+import { sparkScreen } from "../lib/spark/spark-screen";
 
-export default function NewOrganization() {
+function NewOrganization() {
   const { t } = useLingui();
   const styles = useThemedStyles(createStyles);
   const router = useRouter();
@@ -95,4 +97,8 @@ function createStyles() {
     title: { ...typeScale.title, color: native.label, textAlign: "center" },
     error: { ...typeScale.caption, color: mobileTokens().destructive },
   });
+}
+
+export default function NewOrganizationRoute() {
+  return sparkScreen(showOrganizations(), <NewOrganization />);
 }

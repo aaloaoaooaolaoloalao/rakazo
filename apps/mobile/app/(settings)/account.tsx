@@ -42,7 +42,15 @@ import { openFromSettings, useRestoreSpaces } from "../../lib/settings/back-to-s
 import { createSettingsPageStyles } from "../../lib/settings/settings-page-styles";
 import { isSettingsLink, openFromSettingsSheet } from "../../lib/settings/settings-sheet";
 import { activeOrganization, useOrganizations } from "../../lib/spaces/organizations";
-import { showModelSettings, showVoiceSettings } from "../../lib/spark/product";
+import {
+  showBilling,
+  showLabs,
+  showModelSettings,
+  showOrganizations,
+  showSpendingLimits,
+  showVoiceSettings,
+  showWallet,
+} from "../../lib/spark/product";
 import { confirmUnsentSendLoss } from "../../lib/thread/send/unsent-send-warning";
 
 type Icon = Pick<ComponentProps<typeof NativeSymbol>, "ios" | "android">;
@@ -175,7 +183,7 @@ export default function Account() {
     />
   );
   const creditsRow =
-    creditsUsd !== null ? (
+    showBilling() && creditsUsd !== null ? (
       <SettingsRow
         key="credits"
         accessible
@@ -183,34 +191,37 @@ export default function Account() {
         value={t`${ph({ amount: usd.format(creditsUsd) })} left`}
       />
     ) : null;
-  const mediaRow = media ? (
-    <SettingsRow
-      key="media"
-      accessible
-      title={t`Images and video`}
-      value={t`${ph({ left: usd.format(media.leftCents / 100) })} of ${ph({ limit: usd.format(media.limitCents / 100) })} left`}
-    />
-  ) : null;
+  const mediaRow =
+    showBilling() && media ? (
+      <SettingsRow
+        key="media"
+        accessible
+        title={t`Images and video`}
+        value={t`${ph({ left: usd.format(media.leftCents / 100) })} of ${ph({ limit: usd.format(media.limitCents / 100) })} left`}
+      />
+    ) : null;
   const period = { session: t`Session`, week: t`Weekly`, month: t`Monthly` };
-  const planGroups = plans.map((plan) => (
-    <SettingsGroup
-      key={plan.credentialId}
-      label={plan.label === plan.name ? plan.name : `${plan.name} · ${plan.label}`}
-    >
-      {plan.windows.map((window) => {
-        const reset = formatTimeUntil(window.resetsAt, dateLocaleForUi(locale));
-        return (
-          <SettingsRow
-            key={window.period}
-            accessible
-            title={period[window.period]}
-            detail={reset ? t`Resets in ${ph({ reset })}` : undefined}
-            value={t`${ph({ used: Math.round(window.usedPercent) })}% used`}
-          />
-        );
-      })}
-    </SettingsGroup>
-  ));
+  const planGroups = showBilling()
+    ? plans.map((plan) => (
+        <SettingsGroup
+          key={plan.credentialId}
+          label={plan.label === plan.name ? plan.name : `${plan.name} · ${plan.label}`}
+        >
+          {plan.windows.map((window) => {
+            const reset = formatTimeUntil(window.resetsAt, dateLocaleForUi(locale));
+            return (
+              <SettingsRow
+                key={window.period}
+                accessible
+                title={period[window.period]}
+                detail={reset ? t`Resets in ${ph({ reset })}` : undefined}
+                value={t`${ph({ used: Math.round(window.usedPercent) })}% used`}
+              />
+            );
+          })}
+        </SettingsGroup>
+      ))
+    : [];
   const usageModels = usage?.models?.length ? (
     <SettingsGroup>
       {usage.models.map((row) => (
@@ -267,7 +278,7 @@ export default function Account() {
       href: "/shared-pages",
       icon: { ios: "doc.on.doc", android: "documents-outline" },
     },
-    ...(hasLab(me?.labs, "board")
+    ...(showLabs() && hasLab(me?.labs, "board")
       ? [
           {
             title: t`Board`,
@@ -356,14 +367,14 @@ export default function Account() {
             href: "/computers",
             icon: { ios: "desktopcomputer", android: "desktop-outline" },
           })}
-          {me?.paymentWalletProvider
+          {showWallet() && me?.paymentWalletProvider
             ? settingsLink({
                 title: t`Wallet`,
                 href: "/wallet",
                 icon: { ios: "wallet.pass", android: "wallet-outline" },
               })
             : null}
-          {spending?.shown ? (
+          {showSpendingLimits() && spending?.shown ? (
             <SpendingLimitRow
               key="spending-limit"
               status={spending}
@@ -395,7 +406,7 @@ export default function Account() {
                   } as const,
                 ]
               : []),
-            ...(me?.labsAvailable?.length
+            ...(showLabs() && me?.labsAvailable?.length
               ? [
                   {
                     title: t`Labs`,
@@ -407,39 +418,43 @@ export default function Account() {
           ].map(settingsLink)}
         </SettingsGroup>
 
-        <SettingsGroup>
-          {organizations ? (
-            <OrganizationRowMenu
-              key="organization"
-              list={organizations}
-              onCreate={() => openFromSettingsSheet(router, "/new-organization")}
-              onSettings={() => router.push("/organization")}
-            >
-              <SettingsRow
-                accessible
-                accessibilityRole="button"
-                accessibilityLabel={t`Organization`}
-                accessibilityValue={{ text: activeOrganization(organizations)?.name }}
-                chevron="down"
-                leading={icon({ ios: "building.2", android: "business-outline" })}
-                title={t`Organization`}
-                value={activeOrganization(organizations)?.name}
-              />
-            </OrganizationRowMenu>
-          ) : null}
-          {settingsLink({
-            title: t`Spaces`,
-            href: "/spaces",
-            icon: { ios: "square.stack", android: "layers-outline" },
-          })}
-          {me?.billingEnabled
-            ? settingsLink({
-                title: t`Billing`,
-                href: "/billing",
-                icon: { ios: "creditcard", android: "card-outline" },
-              })
-            : null}
-        </SettingsGroup>
+        {showOrganizations() || (showBilling() && me?.billingEnabled) ? (
+          <SettingsGroup>
+            {showOrganizations() && organizations ? (
+              <OrganizationRowMenu
+                key="organization"
+                list={organizations}
+                onCreate={() => openFromSettingsSheet(router, "/new-organization")}
+                onSettings={() => router.push("/organization")}
+              >
+                <SettingsRow
+                  accessible
+                  accessibilityRole="button"
+                  accessibilityLabel={t`Organization`}
+                  accessibilityValue={{ text: activeOrganization(organizations)?.name }}
+                  chevron="down"
+                  leading={icon({ ios: "building.2", android: "business-outline" })}
+                  title={t`Organization`}
+                  value={activeOrganization(organizations)?.name}
+                />
+              </OrganizationRowMenu>
+            ) : null}
+            {showOrganizations()
+              ? settingsLink({
+                  title: t`Spaces`,
+                  href: "/spaces",
+                  icon: { ios: "square.stack", android: "layers-outline" },
+                })
+              : null}
+            {showBilling() && me?.billingEnabled
+              ? settingsLink({
+                  title: t`Billing`,
+                  href: "/billing",
+                  icon: { ios: "creditcard", android: "card-outline" },
+                })
+              : null}
+          </SettingsGroup>
+        ) : null}
 
         {writeReviewUrl() || selfHosted() ? (
           <SettingsGroup>

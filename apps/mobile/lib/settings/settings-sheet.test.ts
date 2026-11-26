@@ -5,7 +5,7 @@ import {
   MOBILE_MCP_OAUTH_CALLBACK_URL,
   MOBILE_MEETING_CALENDAR_CALLBACK_URL,
 } from "@rakazo/contracts";
-import { describe, expect, it, vi } from "vitest";
+import { afterEach, describe, expect, it, vi } from "vitest";
 import { redirectSystemPath } from "../../app/+native-intent";
 import { receiveIncomingShare } from "../composer/incoming-share";
 import {
@@ -16,6 +16,10 @@ import {
 } from "./settings-sheet";
 
 vi.mock("../composer/incoming-share", () => ({ receiveIncomingShare: vi.fn() }));
+
+afterEach(() => {
+  vi.unstubAllEnvs();
+});
 
 const mobileRoot = resolve(dirname(fileURLToPath(import.meta.url)), "..", "..");
 
@@ -110,6 +114,20 @@ describe("settings links", () => {
     expect(isSettingsLink("rakazo:///artifacts")).toBe(false);
     expect(isSettingsLink("rakazo://")).toBe(false);
     expect(isSettingsLink("rakazo:///accounts")).toBe(false);
+  });
+
+  it("sends a hidden Spark screen home", () => {
+    vi.stubEnv("EXPO_PUBLIC_SPARK", "1");
+    expect(redirectSystemPath({ path: "rakazo:///billing", initial: false })).toBe("/");
+    expect(redirectSystemPath({ path: "rakazo:///spaces", initial: false })).toBe("/");
+    expect(redirectSystemPath({ path: "rakazo:///labs", initial: false })).toBe("/");
+    expect(redirectSystemPath({ path: "rakazo:///signup-survey", initial: false })).toBe("/");
+    expect(redirectSystemPath({ path: "/meetings", initial: false })).toBe("/");
+    expect(redirectSystemPath({ path: "rakazo:///skills", initial: false })).toBe(
+      "rakazo:///skills",
+    );
+    expect(isSettingsLink("/vault")).toBe(true);
+    expect(isSettingsLink("/billing")).toBe(false);
   });
 
   it("closes the sheet before a link to another screen, and keeps settings links in it", () => {

@@ -42,6 +42,7 @@ import { useScreenQuery } from "../../lib/query/screen-query";
 import type { SettingsTarget } from "../../lib/query/settings-target";
 import { settingsTarget } from "../../lib/query/settings-target";
 import { showModelSettings } from "../../lib/spark/product";
+import { sparkScreen } from "../../lib/spark/spark-screen";
 
 type ModelRoute = { credentialId: string; modelId: string; spaceId?: string };
 
@@ -309,6 +310,5 @@ function ModelSettingsForm(route: ModelRoute) {
 }
 
 export default function ModelSettingsRoute() {
-  if (!showModelSettings()) return null;
-  return <ModelSettingsScreen />;
+  return sparkScreen(showModelSettings(), <ModelSettingsScreen />);
 }
