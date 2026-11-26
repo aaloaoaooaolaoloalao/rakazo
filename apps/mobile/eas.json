@@ -40,18 +40,24 @@
       "distribution": "internal",
       "environment": "spark-preview",
       "channel": "spark-preview",
+      "node": "24.22.2",
+      "pnpm": "12.18.0",
       "env": {
         "SPARK": "1",
-        "EXPO_PUBLIC_SPARK": "1"
+        "EXPO_PUBLIC_SPARK": "1",
+        "EXPO_PUBLIC_API_URL": "https://34-165-87-142.sslip.io"
       }
     },
     "spark-production": {
       "extends": "production",
       "environment": "spark-production",
       "channel": "spark-production",
+      "node": "24.22.2",
+      "pnpm": "12.18.0",
       "env": {
         "SPARK": "1",
-        "EXPO_PUBLIC_SPARK": "1"
+        "EXPO_PUBLIC_SPARK": "1",
+        "EXPO_PUBLIC_API_URL": "https://34-165-87-142.sslip.io"
       }
     }
   },

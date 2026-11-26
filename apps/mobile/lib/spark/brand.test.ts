@@ -3,8 +3,9 @@ import { afterEach, describe, expect, it, vi } from "vitest";
 import appConfig from "../../app.config";
 import {
   applySparkBrand,
-  SPARK_EAS_PROJECT_PLACEHOLDER,
-  SPARK_EXPO_OWNER_PLACEHOLDER,
+  SPARK_EAS_PROJECT_ID,
+  SPARK_EXPO_OWNER,
+  SPARK_SLUG,
   sparkEnvEnabled,
 } from "./brand.js";
 
@@ -91,9 +92,12 @@ describe("SparkAI brand overlay", () => {
     const branded = applySparkBrand(upstream, { SPARK: "1" });
 
     expect(branded.name).toBe("SparkAI");
+    expect(branded.slug).toBe(SPARK_SLUG);
+    expect(branded.slug).toBe("sparkai-");
     expect(branded.scheme).toBe("rakazo");
     expect(branded.version).toBe("1.0.21");
-    expect(branded.owner).toBe(SPARK_EXPO_OWNER_PLACEHOLDER);
+    expect(branded.owner).toBe(SPARK_EXPO_OWNER);
+    expect(branded.owner).toBe("alolololololols-team");
     expect(branded.ios).toMatchObject({
       bundleIdentifier: "com.alonshelly.sparkai",
       appleTeamId: "WNAP7G2A58",
@@ -110,9 +114,14 @@ describe("SparkAI brand overlay", () => {
       sparkNotificationBundleIdentifier: "com.alonshelly.sparkai.notification",
     });
     expect(JSON.stringify(branded)).not.toContain("07f7eb04-45e3-47fe-9374-99a2f991131e");
-    expect(branded.extra?.eas).toMatchObject({ projectId: SPARK_EAS_PROJECT_PLACEHOLDER });
-    expect(branded.updates).toMatchObject({ enabled: false });
-    expect(branded.updates).not.toHaveProperty("url");
+    expect(branded.extra?.eas).toMatchObject({ projectId: SPARK_EAS_PROJECT_ID });
+    expect(branded.extra?.eas).toMatchObject({
+      projectId: "ee5459ca-1aee-469a-bfb6-cd1155216e1f",
+    });
+    expect(branded.updates).toMatchObject({
+      enabled: true,
+      url: "https://u.expo.dev/ee5459ca-1aee-469a-bfb6-cd1155216e1f",
+    });
 
     const eas = branded.extra?.eas as {
       build: { experimental: { ios: { appExtensions: { bundleIdentifier: string }[] } } };
@@ -188,6 +197,8 @@ describe("SparkAI brand overlay", () => {
       packageJsonPath: null,
     });
     expect(branded.name).toBe("SparkAI");
+    expect(branded.slug).toBe("sparkai-");
+    expect(branded.owner).toBe("alolololololols-team");
     expect(branded.scheme).toBe("rakazo");
     expect(branded.ios?.bundleIdentifier).toBe("com.alonshelly.sparkai");
     expect(branded.ios?.associatedDomains).toEqual(["webcredentials:app.example.com"]);
