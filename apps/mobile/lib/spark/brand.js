@@ -10,7 +10,7 @@
  *
  * Defaults (each overridable by the matching env var):
  * - name: SparkAI (`SPARK_APP_NAME`)
- * - version: at least 1.0.21 (`SPARK_APP_VERSION`)
+ * - version: at least 3.0.1 (`SPARK_APP_VERSION`)
  * - iOS bundle id: com.alonshelly.sparkai (`SPARK_IOS_BUNDLE_ID`)
  * - notification extension: com.alonshelly.sparkai.notification (`SPARK_NOTIFICATION_BUNDLE_ID`)
  * - other iOS extensions: the same bundle prefix plus their existing suffix
@@ -34,7 +34,7 @@
  * App Store submission if EAS warns about the size.
  */
 
-const MIN_VERSION = "1.0.21";
+const MIN_VERSION = "3.0.1";
 const MIN_BUILD = 10;
 const DEFAULT_BUNDLE_ID = "com.alonshelly.sparkai";
 const DEFAULT_TEAM_ID = "WNAP7G2A58";
