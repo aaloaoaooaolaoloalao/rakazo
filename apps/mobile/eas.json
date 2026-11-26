@@ -34,6 +34,25 @@
     "diagnostic": {
       "extends": "production",
       "channel": "diagnostic"
+    },
+    "spark-preview": {
+      "extends": "preview",
+      "distribution": "internal",
+      "environment": "spark-preview",
+      "channel": "spark-preview",
+      "env": {
+        "SPARK": "1",
+        "EXPO_PUBLIC_SPARK": "1"
+      }
+    },
+    "spark-production": {
+      "extends": "production",
+      "environment": "spark-production",
+      "channel": "spark-production",
+      "env": {
+        "SPARK": "1",
+        "EXPO_PUBLIC_SPARK": "1"
+      }
     }
   },
   "submit": {

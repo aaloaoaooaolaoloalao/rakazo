@@ -1,6 +1,7 @@
 import type { ConfigContext, ExpoConfig } from "expo/config";
+import { applySparkBrand } from "./lib/spark/brand";
 
-const RELEASE_PROFILES = new Set(["production", "android-apk", "diagnostic"]);
+const RELEASE_PROFILES = new Set(["production", "android-apk", "diagnostic", "spark-production"]);
 const BUNDLE_ID = /^[A-Za-z0-9-]+(\.[A-Za-z0-9-]+)+$/;
 const APPLE_TEAM_ID = /^[A-Z0-9]{10}$/;
 const EXPO_PROJECT_ID = /^[A-Za-z0-9-]+$/;
@@ -25,7 +26,9 @@ export default ({ config }: ConfigContext): ExpoConfig => {
     }
   }
 
-  let result = config as ExpoConfig;
+  // SparkAI ids, name, and icon. A no-op (same object) unless SPARK / EXPO_PUBLIC_SPARK is set.
+  // RAKAZO_* overrides below still win when both are set.
+  let result = applySparkBrand(config as ExpoConfig);
 
   // Self-signed iOS builds use their own bundle id and team. Config plugins derive extension ids
   // from ios.bundleIdentifier, and EAS appExtensions and the share extension's app group follow.

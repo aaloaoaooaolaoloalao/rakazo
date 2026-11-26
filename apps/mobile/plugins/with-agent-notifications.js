@@ -10,7 +10,7 @@ const ENTITLEMENT = "com.apple.developer.usernotifications.communication";
 const INFO_PLIST = `<?xml version="1.0" encoding="UTF-8"?>
 <!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
 <plist version="1.0"><dict>
-<key>CFBundleDisplayName</key><string>Rakazo</string>
+<key>CFBundleDisplayName</key><string>__DISPLAY_NAME__</string>
 <key>CFBundleName</key><string>$(PRODUCT_NAME)</string>
 <key>CFBundleIdentifier</key><string>$(PRODUCT_BUNDLE_IDENTIFIER)</string>
 <key>CFBundleExecutable</key><string>$(EXECUTABLE_NAME)</string>
@@ -36,7 +36,10 @@ function addNotificationExtension(project, root, config) {
   const directory = path.join(root, TARGET);
   fs.mkdirSync(directory, { recursive: true });
   fs.copyFileSync(SOURCE, path.join(directory, "NotificationService.swift"));
-  fs.writeFileSync(path.join(directory, "Info.plist"), INFO_PLIST);
+  fs.writeFileSync(
+    path.join(directory, "Info.plist"),
+    INFO_PLIST.replace("__DISPLAY_NAME__", xmlText(config.name ?? "Rakazo")),
+  );
   fs.writeFileSync(path.join(directory, `${TARGET}.entitlements`), ENTITLEMENTS);
 
   // Quoted when the target was just added, bare when read back from an existing project.
@@ -48,7 +51,7 @@ function addNotificationExtension(project, root, config) {
     const objects = project.hash.project.objects;
     objects.PBXTargetDependency ??= {};
     objects.PBXContainerItemProxy ??= {};
-    const bundleId = `${config.ios?.bundleIdentifier}.notifications`;
+    const bundleId = notificationBundleId(config);
     const target = project.addTarget(TARGET, "app_extension", TARGET, bundleId);
     const group = addPbxGroupWithOwnFiles(
       project,
@@ -78,10 +81,22 @@ function addNotificationExtension(project, root, config) {
       INFOPLIST_FILE: `${TARGET}/Info.plist`,
       IPHONEOS_DEPLOYMENT_TARGET: "16.0",
       MARKETING_VERSION: config.version ?? "1.0",
+      PRODUCT_BUNDLE_IDENTIFIER: notificationBundleId(config),
       SWIFT_VERSION: "5.0",
       TARGETED_DEVICE_FAMILY: '"1,2"',
     });
   }
+}
+
+/** Spark builds set a singular notification id; upstream stays `${bundle}.notifications`. */
+function notificationBundleId(config) {
+  const override = config.extra?.sparkNotificationBundleIdentifier;
+  if (typeof override === "string" && override.trim()) return override.trim();
+  return `${config.ios?.bundleIdentifier}.notifications`;
+}
+
+function xmlText(value) {
+  return String(value).replaceAll("&", "&amp;").replaceAll("<", "&lt;").replaceAll(">", "&gt;");
 }
 
 function withAgentNotifications(config) {
