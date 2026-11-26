@@ -6,6 +6,7 @@ import {
   TOOL_STEP_CALLS_KEPT,
   toolResultTaintsRun,
   toolStepOutcomeText,
+  toolStepsHistoryText,
 } from "@rakazo/core";
 import {
   bounded,
@@ -35,7 +36,7 @@ export function toPiImages(images: AgentRunRequest["currentTurnImages"]) {
  * Bump when the shape of replayed history changes (roles, labels, tool steps, images), so runs
  * record which replay format they used. Part of the prompt version.
  */
-export const HISTORY_FORMAT_VERSION = 4;
+export const HISTORY_FORMAT_VERSION = 5;
 
 /**
  * Provider, api and model stamped on replayed own replies. None matches a real model, so Pi
@@ -89,6 +90,23 @@ function replayedSteps(segments: NonNullable<HistoryEntry["segments"]>): History
     }
   }
   return steps;
+}
+
+const TOOL_STEPS_MARKER = "[tool calls this reply made]";
+
+/**
+ * Older steps stored no calls, so they cannot replay as tool calls. Their summary still belongs
+ * in the text form. A list already written into the reply is left as stored; the history text
+ * builder strips one a bot copied, and this puts the stored steps back.
+ */
+function assistantReplayText(message: HistoryEntry): string {
+  const content = message.content;
+  if (!message.segments || content.toLowerCase().includes(TOOL_STEPS_MARKER)) return content;
+  if (replaysAsToolCalls(message.segments)) return content;
+  const steps = message.segments.flatMap((segment) => ("steps" in segment ? segment.steps : []));
+  const summary = toolStepsHistoryText(steps);
+  if (!summary) return content;
+  return content.trim() ? `${summary}\n${content}` : summary;
 }
 
 /**
@@ -398,11 +416,12 @@ export function toHistory(
       if (offered.size > 0 && m.segments && replaysAsToolCalls(m.segments))
         return replayedToolReply(m, m.segments, common, offered, deferred);
       // A reply whose blocks render to nothing has no text to replay.
-      if (!m.content.trim()) return [];
+      const text = assistantReplayText(m);
+      if (!text.trim()) return [];
       return [
         {
           role: "assistant" as const,
-          content: [{ type: "text" as const, text: m.content }],
+          content: [{ type: "text" as const, text }],
           ...HISTORY_ASSISTANT,
           usage: NO_USAGE,
           stopReason: "stop" as const,

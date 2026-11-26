@@ -721,9 +721,12 @@ describe("run computer provisioning", () => {
   it("fails the run at once, saying to Recover, when its computer stays damaged", async () => {
     provisionComputer.mockRejectedValue(new SandboxDamagedError());
 
-    const { finalizeRun, enqueue, prisma } = await runRoutine([
-      { name: "list_files", args: { path: "" } },
-    ]);
+    // A file listing is served from stored home until the computer has to start.
+    // An attachment forces that start, which is where a damaged computer is found.
+    const { finalizeRun, enqueue, prisma } = await runRoutine(
+      [{ name: "list_files", args: { path: "" } }],
+      { attachments: "file" },
+    );
 
     expect(provisionComputer).toHaveBeenCalledOnce();
     expect(finalizeRun).toHaveBeenCalledExactlyOnceWith(
@@ -739,7 +742,10 @@ describe("run computer provisioning", () => {
       new AggregateError([refusal, new Error("rollback failed")], "Computer provisioning failed"),
     );
 
-    const { finalizeRun, enqueue } = await runRoutine([{ name: "list_files", args: { path: "" } }]);
+    const { finalizeRun, enqueue } = await runRoutine(
+      [{ name: "list_files", args: { path: "" } }],
+      { attachments: "file" },
+    );
 
     expect(provisionComputer).toHaveBeenCalledOnce();
     expect(finalizeRun).toHaveBeenCalledExactlyOnceWith(

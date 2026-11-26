@@ -42,7 +42,10 @@ import {
   VOICE_CALL_INSTRUCTION,
   voiceCallInstruction,
 } from "../assembly/run-instructions.prompt.js";
-import { REACTION_SILENT_REPLY_GUIDANCE, runReplyGuidance } from "../assembly/run-replies.prompt.js";
+import {
+  REACTION_SILENT_REPLY_GUIDANCE,
+  runReplyGuidance,
+} from "../assembly/run-replies.prompt.js";
 import { createRunWorkspaceCheckpoint } from "../lifecycle/run-lifecycle.js";
 import { runNotificationsEnabled } from "../lifecycle/run-notifications.js";
 import {
@@ -1561,7 +1564,7 @@ describe("userTurnInstructions", () => {
       archiveBot,
       "Connected plugins: none",
       "Agent skills",
-      expect.stringContaining("read the Rakazo skill"),
+      "For anything about SparkAI itself (what it is, how it or you work, setup, its source code), read the SparkAI skill first.",
       "Taught skills",
       ...stableTail,
       "Group context",

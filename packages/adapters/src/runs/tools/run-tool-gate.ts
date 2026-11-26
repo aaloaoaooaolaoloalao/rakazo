@@ -405,7 +405,7 @@ export async function gateToolCall(
         reviewOnly,
         checkerConfigured,
         newDestination: siteGate === "new",
-        purchase: Boolean(purchase),
+        purchase: paying,
         outboundSend,
       });
   if (plan === "deny") {

@@ -39,11 +39,19 @@ const loginUse = {
   savedAt: "2026-09-01T00:00:01.000Z",
 };
 
+const cardUse = {
+  card: "visa",
+  site: "https://shop.example.test",
+  title: "shop.example.test",
+  savedAt: "2026-09-01T00:00:01.000Z",
+};
+
 function gate(options: {
   trigger?: string;
   neverAsk?: boolean;
   rule?: "always_allow" | "deny";
   asks?: boolean;
+  card?: boolean;
 }) {
   const args = { actions: [{ kind: "fill_secret", ref: "e1", secret: "work", field: "Password" }] };
   const executionId = JSON.stringify(["pi-tool", "main", "call-1"]);
@@ -63,7 +71,7 @@ function gate(options: {
     settingsChange: false,
     ignoresAllowRules: false,
     purchase: undefined,
-    cardUse: undefined,
+    cardUse: options.card ? cardUse : undefined,
     loginUse: options.asks === false ? undefined : loginUse,
   };
   const ctx = {
@@ -109,10 +117,21 @@ describe("gateToolCall: a login that asks first", () => {
     }
   });
 
-  it("runs it without asking in Never ask", async () => {
+  it("asks for a saved login in Never ask", async () => {
     plans.length = 0;
-    await gate({ neverAsk: true });
-    expect(plans).toEqual(["allow"]);
+    expect(await gate({ neverAsk: true })).toBe("asks the user");
+    expect(plans).toEqual(["ask"]);
+  });
+
+  it("asks for a saved card in Never ask, even over an Always allow rule", async () => {
+    plans.length = 0;
+    expect(await gate({ neverAsk: true, card: true, asks: false })).toBe("asks the user");
+    expect(plans).toEqual(["ask"]);
+    plans.length = 0;
+    expect(await gate({ neverAsk: true, card: true, asks: false, rule: "always_allow" })).toBe(
+      "asks the user",
+    );
+    expect(plans).toEqual(["ask"]);
   });
 
   it("asks in a webhook run too, where the card expires if nobody answers", async () => {

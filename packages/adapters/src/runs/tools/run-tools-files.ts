@@ -40,7 +40,12 @@ function runWorkspace(ctx: RunContext, call: ToolCall): RunWorkspace {
     botId: ctx.bot.id,
     computerMode: ctx.computer.mode,
     computer: () => ctx.computer.get("tool", call.name),
-    ...(ctx.deps.home
+    // A commit-only home store cannot list or read. File tools use it only when those
+    // reads exist, so a not-yet-started computer is served from stored home and a
+    // fixture that only checkpoints still uses the live computer.
+    ...(ctx.deps.home &&
+    typeof ctx.deps.home.list === "function" &&
+    typeof ctx.deps.home.readFile === "function"
       ? {
           home: {
             store: ctx.deps.home,

@@ -277,7 +277,7 @@ describe("earlier turns' tool work", () => {
   });
 
   it("replays what an earlier reply did on the computer, not only its final text", () => {
-    const install = messageToAgentHistoryText({
+    const message = {
       id: "bot-install",
       threadId: "thread-1",
       role: "bot",
@@ -292,11 +292,17 @@ describe("earlier turns' tool work", () => {
         },
         { kind: "text", text: "Done." },
       ],
-    });
+    };
+    const install = messageToAgentHistoryText(message);
     const [, replayed] = toHistory(
       [
         { id: "user-ask", role: "user", content: "Install the password manager extension." },
-        { id: "bot-install", role: "assistant", content: install },
+        {
+          id: "bot-install",
+          role: "assistant",
+          content: install,
+          segments: messageToAgentHistorySegments(message),
+        },
         { id: "user-later", role: "user", content: "What's the weather?" },
       ],
       "Did you install the extension?",

@@ -4,6 +4,7 @@ import { translate } from "@rakazo/core";
 import { getLogger } from "@rakazo/logging";
 import type { EmailCopyId } from "./email-keys.js";
 import { EMAIL_COPY_KEYS, EMAIL_LOCALES } from "./email-keys.js";
+import { sparkEmailFallback } from "./spark-email-fallback.js";
 import type { CopyByLocale } from "./validate.js";
 import { readCopyFile } from "./validate.js";
 
@@ -21,18 +22,24 @@ export type EmailCopyReport =
 function logReport({ email, off, problems }: EmailCopyReport): void {
   const attributes = { "email.kind": email, "email_copy.problems": problems.join("; ") };
   if (off === "missing")
-    getLogger().info("email is off: the deployment supplies no copy for it", attributes);
+    getLogger().info(
+      "deployment email copy is missing; in-code English is used when it exists",
+      attributes,
+    );
   else if (off === "invalid")
-    getLogger().warn("email is off: its copy has no valid English for every key", attributes);
+    getLogger().warn(
+      "deployment email copy has no valid English for every key; in-code English is used when it exists",
+      attributes,
+    );
   else if (problems.length > 0)
     getLogger().warn("email copy falls back to the file's English", attributes);
 }
 
 /**
  * Reads a deployment's email copy from `dir` (`<email>.json`, app language to key to text), once
- * per email, and reports each email once. An email is sent only when its file's English holds a
- * valid string for every key; another language's missing or invalid string falls back to that
- * English.
+ * per email, and reports each email once. A complete English file is the copy that is sent;
+ * another language's missing or invalid string falls back to that English. Welcome, referral,
+ * and model-connection mail still send from the in-code English when the file is missing.
  */
 export function emailCopyReader(
   dir: string | undefined,
@@ -96,12 +103,19 @@ function deploymentCopy() {
   return reader;
 }
 
-/** Whether the deployment's copy (`EMAIL_COPY_DIR`) lets this email be sent; reported once. */
+/**
+ * Whether this email can be sent. A complete `EMAIL_COPY_DIR` file wins. Welcome,
+ * referral, and model-connection mail still send from the in-code SparkAI English
+ * when that file is missing or incomplete.
+ */
 export function emailCopyAvailable(id: EmailCopyId): boolean {
-  return deploymentCopy().available(id);
+  return deploymentCopy().available(id) || sparkEmailFallback(id) !== undefined;
 }
 
-/** The deployment's copy of one email in `locale`; only for an email that is available. */
+/** Deployment copy when it is complete; otherwise the SparkAI English fallback, when one exists. */
 export function emailCopy<Id extends EmailCopyId>(id: Id, locale: string): SayCopy<Id> {
+  if (deploymentCopy().available(id)) return deploymentCopy().copy(id, locale);
+  const fallback = sparkEmailFallback(id);
+  if (fallback) return fallback as SayCopy<Id>;
   return deploymentCopy().copy(id, locale);
 }
