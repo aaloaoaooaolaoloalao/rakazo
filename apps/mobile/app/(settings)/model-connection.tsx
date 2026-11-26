@@ -64,6 +64,7 @@ import { analyticsClient } from "../../lib/native/analytics-surface";
 import { native, useThemedStyles } from "../../lib/native/native";
 import { useScreenHeader } from "../../lib/navigation/screen-header";
 import { ACCOUNT_SETTINGS, settingsRpc } from "../../lib/query/settings-target";
+import { showModelSettings } from "../../lib/spark/product";
 
 type ModelSelection = {
   modelId?: string;
@@ -72,7 +73,7 @@ type ModelSelection = {
 type FeedbackAnchor = "model" | "connection";
 
 /** Connects or manages one provider for the model list that opened it. */
-export default function ModelConnection() {
+function ModelConnection() {
   const styles = useThemedStyles(createModelsStyles);
   const router = useRouter();
   const { requestId = "" } = useLocalSearchParams<{ requestId?: string }>();
@@ -908,4 +909,9 @@ export default function ModelConnection() {
       </ScrollView>
     </SafeAreaView>
   );
+}
+
+export default function ModelConnectionRoute() {
+  if (!showModelSettings()) return null;
+  return <ModelConnection />;
 }

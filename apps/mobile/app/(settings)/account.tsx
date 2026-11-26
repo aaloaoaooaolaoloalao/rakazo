@@ -42,6 +42,7 @@ import { openFromSettings, useRestoreSpaces } from "../../lib/settings/back-to-s
 import { createSettingsPageStyles } from "../../lib/settings/settings-page-styles";
 import { isSettingsLink, openFromSettingsSheet } from "../../lib/settings/settings-sheet";
 import { activeOrganization, useOrganizations } from "../../lib/spaces/organizations";
+import { showModelSettings, showVoiceSettings } from "../../lib/spark/product";
 import { confirmUnsentSendLoss } from "../../lib/thread/send/unsent-send-warning";
 
 type Icon = Pick<ComponentProps<typeof NativeSymbol>, "ios" | "android">;
@@ -320,11 +321,15 @@ export default function Account() {
               href: "/general",
               icon: { ios: "gearshape", android: "settings-outline" },
             } as const,
-            {
-              title: t`Models`,
-              href: "/models",
-              icon: { ios: "cpu", android: "hardware-chip-outline" },
-            } as const,
+            ...(showModelSettings()
+              ? [
+                  {
+                    title: t`Models`,
+                    href: "/models",
+                    icon: { ios: "cpu", android: "hardware-chip-outline" },
+                  } as const,
+                ]
+              : []),
           ].map(settingsLink)}
           <ApprovalModeRow
             key="approvals"
@@ -372,11 +377,15 @@ export default function Account() {
               href: "/memory",
               icon: { ios: "brain", android: { material: "brain" } },
             } as const,
-            {
-              title: t`Voice`,
-              href: "/voice",
-              icon: { ios: "speaker.wave.2", android: "volume-high-outline" },
-            } as const,
+            ...(showVoiceSettings()
+              ? [
+                  {
+                    title: t`Voice`,
+                    href: "/voice",
+                    icon: { ios: "speaker.wave.2", android: "volume-high-outline" },
+                  } as const,
+                ]
+              : []),
             ...(messagingEnabled
               ? [
                   {

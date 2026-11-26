@@ -11,9 +11,10 @@ import { MenuPicker } from "../components/ui/menu-picker";
 import { errorText } from "../lib/api/user-error";
 import { rpcQuery, useSave } from "../lib/query/query";
 import { useScreenQuery } from "../lib/query/screen-query";
+import { showModelSettings } from "../lib/spark/product";
 
 /** A chat's model and thinking, opened from the composer; each change saves at once. */
-export default function ChatModelScreen() {
+function ChatModelScreen() {
   const { t } = useLingui();
   const router = useRouter();
   const { botId } = useLocalSearchParams<{ botId: string }>();
@@ -106,4 +107,9 @@ export default function ChatModelScreen() {
       }
     />
   );
+}
+
+export default function ChatModelRoute() {
+  if (!showModelSettings()) return null;
+  return <ChatModelScreen />;
 }

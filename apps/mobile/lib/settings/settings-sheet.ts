@@ -1,4 +1,5 @@
 import type { Href } from "expo-router";
+import { showModelSettings, showVoiceSettings } from "../spark/product";
 
 // On iOS a screen opened on the root stack while the settings sheet is open is presented as a
 // second sheet over it, so navigation that leaves settings closes the sheet first.
@@ -88,9 +89,17 @@ export function linkScreen(link: string): string {
   );
 }
 
-/** Whether a link opens a settings page. */
+/** Whether a link opens a settings page. Spark builds drop Models and Voice. */
 export function isSettingsLink(link: string): boolean {
-  return settingsScreens.has(linkScreen(link));
+  const screen = linkScreen(link);
+  if (!showSettingsScreen(screen)) return false;
+  return settingsScreens.has(screen);
+}
+
+function showSettingsScreen(screen: string): boolean {
+  if (screen === "models" || screen === "model-settings") return showModelSettings();
+  if (screen === "voice") return showVoiceSettings();
+  return true;
 }
 
 /** The Settings return marker belongs to navigation inside this app. */

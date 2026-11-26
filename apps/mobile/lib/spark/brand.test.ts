@@ -10,6 +10,7 @@ import {
 
 afterEach(() => {
   vi.unstubAllEnvs();
+  delete process.env.EXPO_PUBLIC_SPARK;
 });
 
 const upstream: ExpoConfig = {

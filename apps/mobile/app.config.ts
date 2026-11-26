@@ -1,5 +1,5 @@
 import type { ConfigContext, ExpoConfig } from "expo/config";
-import { applySparkBrand } from "./lib/spark/brand";
+import { applySparkBrand, sparkEnvEnabled } from "./lib/spark/brand";
 
 const RELEASE_PROFILES = new Set(["production", "android-apk", "diagnostic", "spark-production"]);
 const BUNDLE_ID = /^[A-Za-z0-9-]+(\.[A-Za-z0-9-]+)+$/;
@@ -27,7 +27,11 @@ export default ({ config }: ConfigContext): ExpoConfig => {
   }
 
   // SparkAI ids, name, and icon. A no-op (same object) unless SPARK / EXPO_PUBLIC_SPARK is set.
-  // RAKAZO_* overrides below still win when both are set.
+  // RAKAZO_* overrides below still win when both are set. Copying SPARK onto
+  // EXPO_PUBLIC_SPARK lets Metro inline the same flag into the JS bundle.
+  if (sparkEnvEnabled() && !process.env.EXPO_PUBLIC_SPARK) {
+    process.env.EXPO_PUBLIC_SPARK = "1";
+  }
   let result = applySparkBrand(config as ExpoConfig);
 
   // Self-signed iOS builds use their own bundle id and team. Config plugins derive extension ids

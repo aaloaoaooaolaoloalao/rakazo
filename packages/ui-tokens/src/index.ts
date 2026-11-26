@@ -512,3 +512,5 @@ export function renderTokensCss(): string {
     renderBlock('[data-theme="light"]', "light", webLightTokens),
   ].join("\n\n")}\n`;
 }
+
+export { PRODUCT_UI } from "./product-ui.js";

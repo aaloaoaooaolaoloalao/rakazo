@@ -5,8 +5,9 @@ import { ModelPickerList } from "../../components/models/model-picker-list";
 import { SettingsFooter } from "../../components/settings/settings-group";
 import { modelPickerRequest, selectPickerModel } from "../../lib/models/model-picker-selection";
 import { useScreenHeader } from "../../lib/navigation/screen-header";
+import { showModelSettings } from "../../lib/spark/product";
 
-export default function SettingsModelPickerScreen() {
+function SettingsModelPickerScreen() {
   const { requestId = "" } = useLocalSearchParams<{ requestId?: string }>();
   const router = useRouter();
   const { t } = useLingui();
@@ -32,4 +33,9 @@ export default function SettingsModelPickerScreen() {
       }}
     />
   );
+}
+
+export default function SettingsModelPickerRoute() {
+  if (!showModelSettings()) return null;
+  return <SettingsModelPickerScreen />;
 }

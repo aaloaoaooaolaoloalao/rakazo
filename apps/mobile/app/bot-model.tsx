@@ -6,8 +6,9 @@ import { ModelPickerList } from "../components/models/model-picker-list";
 import { errorText } from "../lib/api/user-error";
 import { rpcQuery } from "../lib/query/query";
 import { useScreenQuery } from "../lib/query/screen-query";
+import { showModelSettings } from "../lib/spark/product";
 
-export default function BotModelScreen() {
+function BotModelScreen() {
   const { t } = useLingui();
   const router = useRouter();
   const { botId, value = "" } = useLocalSearchParams<{ botId: string; value?: string }>();
@@ -41,4 +42,9 @@ export default function BotModelScreen() {
       }
     />
   );
+}
+
+export default function BotModelRoute() {
+  if (!showModelSettings()) return null;
+  return <BotModelScreen />;
 }

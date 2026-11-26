@@ -40,6 +40,7 @@ import { native, useThemedStyles } from "../../lib/native/native";
 import type { SaveSend } from "../../lib/query/query";
 import { queryClient, rpcQuery, useSave } from "../../lib/query/query";
 import { ACCOUNT_SETTINGS, settingsTarget } from "../../lib/query/settings-target";
+import { showModelSettings } from "../../lib/spark/product";
 
 const noModels: MobileModel[] = [];
 const noCredentials: MobileModelCredential[] = [];
@@ -49,7 +50,7 @@ const noBots: MobileBot[] = [];
  * The main and approval model lists; connecting a provider opens its own screen. Opened with a
  * Space, it edits that Space's override instead of the account's.
  */
-export default function Models() {
+function Models() {
   const params = useLocalSearchParams<{ spaceId?: string }>();
   const target = useMemo(() => settingsTarget(params.spaceId), [params.spaceId]);
   // A Space's override is read from that Space even when another one is selected.
@@ -404,4 +405,9 @@ function createModelsStyles() {
       fontSize: 14,
     },
   });
+}
+
+export default function ModelsScreen() {
+  if (!showModelSettings()) return null;
+  return <Models />;
 }

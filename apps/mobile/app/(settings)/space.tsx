@@ -21,6 +21,7 @@ import { native, useThemedStyles } from "../../lib/native/native";
 import { queryClient, rpcQuery, useSave } from "../../lib/query/query";
 import { settingsTarget } from "../../lib/query/settings-target";
 import { useApprovalSettings } from "../../lib/settings/approval-settings";
+import { showModelSettings, showVoiceSettings } from "../../lib/spark/product";
 
 /**
  * A Space follows the account's models, voice, approvals and vault until one is customized for it.
@@ -147,8 +148,8 @@ export default function SpaceSettings() {
           accessibilityLabel={t`Settings for this Space`}
           label={t`Settings for this Space`}
         >
-          {row("models", t`Models`)}
-          {row("voice", t`Voice`)}
+          {showModelSettings() ? row("models", t`Models`) : null}
+          {showVoiceSettings() ? row("voice", t`Voice`) : null}
           {row("confirmations", t`Approvals`)}
           {row("credentials", t`Vault`)}
         </SettingsGroup>

@@ -52,6 +52,7 @@ import { useSideInsets } from "../lib/layout/side-insets";
 import { native, useMobileTokens } from "../lib/native/native";
 import { formRead, rpcQuery, useSave } from "../lib/query/query";
 import { useScreenQuery } from "../lib/query/screen-query";
+import { showModelSettings, showVoiceSettings } from "../lib/spark/product";
 import { notifyConversationCleared } from "../lib/thread/conversation-cleared";
 import { deviceVoices, setVoiceForBot, voiceForBot, voiceLabel } from "../lib/voice/bot-voices";
 import { loadDeviceVoiceEnabled } from "../lib/voice/device-voice";
@@ -554,34 +555,36 @@ function BotSettings() {
             {botId ? (
               <BotContextCards key={`${botId}-memory`} botId={botId} section="memory" />
             ) : null}
-            <SettingsGroup label={t`Model`} footer={modelMetaError ?? undefined}>
-              <MenuPicker
-                choices={modelChoices}
-                label={t`Model`}
-                showLabel={false}
-                onChange={selectModel}
-                onPress={
-                  modelChoices.length > MODEL_SEARCH_THRESHOLD
-                    ? () =>
-                        router.push({
-                          pathname: "/bot-model",
-                          params: { botId, value: shownKey },
-                        })
-                    : undefined
-                }
-                value={shownKey}
-              />
-              {thinkingOptions.length ? (
+            {showModelSettings() ? (
+              <SettingsGroup label={t`Model`} footer={modelMetaError ?? undefined}>
                 <MenuPicker
-                  choices={thinkingChoices}
-                  label={t`Thinking`}
-                  onChange={(level) =>
-                    setThinkingLevel(savedThinkingLevel(level as ThinkingLevel) ?? "")
+                  choices={modelChoices}
+                  label={t`Model`}
+                  showLabel={false}
+                  onChange={selectModel}
+                  onPress={
+                    modelChoices.length > MODEL_SEARCH_THRESHOLD
+                      ? () =>
+                          router.push({
+                            pathname: "/bot-model",
+                            params: { botId, value: shownKey },
+                          })
+                      : undefined
                   }
-                  value={thinkingLevel || defaultThinkingLevel}
+                  value={shownKey}
                 />
-              ) : null}
-            </SettingsGroup>
+                {thinkingOptions.length ? (
+                  <MenuPicker
+                    choices={thinkingChoices}
+                    label={t`Thinking`}
+                    onChange={(level) =>
+                      setThinkingLevel(savedThinkingLevel(level as ThinkingLevel) ?? "")
+                    }
+                    value={thinkingLevel || defaultThinkingLevel}
+                  />
+                ) : null}
+              </SettingsGroup>
+            ) : null}
             <SettingsGroup>
               <SettingsSwitch
                 label={t`Own computer`}
@@ -591,7 +594,7 @@ function BotSettings() {
               {computerMaintenanceRows}
               {computerHomeVersionRows}
             </SettingsGroup>
-            {changed?.readAloud || deviceVoiceEnabled ? (
+            {showVoiceSettings() && (changed?.readAloud || deviceVoiceEnabled) ? (
               <SettingsGroup label={t`Voice`}>
                 {changed?.readAloud ? (
                   <SettingsSwitch

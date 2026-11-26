@@ -41,6 +41,7 @@ import { formRead, queryClient, targetRpcQuery, useSave } from "../../lib/query/
 import { useScreenQuery } from "../../lib/query/screen-query";
 import type { SettingsTarget } from "../../lib/query/settings-target";
 import { settingsTarget } from "../../lib/query/settings-target";
+import { showModelSettings } from "../../lib/spark/product";
 
 type ModelRoute = { credentialId: string; modelId: string; spaceId?: string };
 
@@ -77,7 +78,7 @@ function modelRead(
 }
 
 /** One model's own settings on the connection that runs it. */
-export default function ModelSettingsScreen() {
+function ModelSettingsScreen() {
   const {
     credentialId = "",
     modelId = "",
@@ -305,4 +306,9 @@ function ModelSettingsForm(route: ModelRoute) {
       </ScrollView>
     </SafeAreaView>
   );
+}
+
+export default function ModelSettingsRoute() {
+  if (!showModelSettings()) return null;
+  return <ModelSettingsScreen />;
 }
