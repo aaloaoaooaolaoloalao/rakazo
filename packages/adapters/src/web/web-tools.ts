@@ -5,6 +5,7 @@ import type {
   WebSearchProvider,
 } from "@rakazo/adapter-kit";
 import { fenceUntrustedWebContent } from "@rakazo/core";
+import { imageToolResult } from "../media/tool-result-image.js";
 import { clampMaxChars, clampMaxResults, clampOffset } from "./web-limits.js";
 
 /** Payload behind a fenced web tool result (for tests and connectors). */
@@ -50,10 +51,12 @@ export async function webSearchFromTool(
   }
 }
 
+/** A picture comes back as image input when the run's model can see, and as a short note when not. */
 export async function webFetchFromTool(
   fetchProvider: WebFetchProvider,
   context: AdapterContext,
   args: Record<string, unknown>,
+  modelSeesImages = false,
 ) {
   const url = String(args.url ?? "").trim();
   if (!url) return { error: "url is required" };
@@ -67,6 +70,8 @@ export async function webFetchFromTool(
       },
       context,
     );
+    if (result.image)
+      return await imageToolResult(result.image, { url: result.url }, modelSeesImages);
     return fencedWebResult("web_fetch", result);
   } catch (error) {
     return { error: error instanceof Error ? error.message : String(error) };

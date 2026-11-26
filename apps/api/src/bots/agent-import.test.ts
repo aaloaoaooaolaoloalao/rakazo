@@ -5,6 +5,7 @@ import type { AgentImportServices } from "./agent-import.js";
 import {
   agentImportSetupState,
   createImportedBot,
+  createImportedBots,
   previewAgentImport,
   requestDigest,
 } from "./agent-import.js";
@@ -189,18 +190,35 @@ describe("a Grok Bot's event routines", () => {
       ["Mail", { kind: "needs_setup", needs: [{ kind: "turn_on" }, { kind: "email_address" }] }],
     ]);
     expect(plan.routines[2]?.content).toBe("Trigger: slack\n\nHandle it.");
-    // Only the routine nothing here can start is left for the bot to set up by hand.
-    const note = plan.memory.find((item) => item.path === "grok-bot-routines.md");
-    expect(note?.content).toContain("## Elsewhere");
-    expect(note?.content).not.toContain("## Support");
+    // Only the routine nothing here can start is left over, and none of it goes to memory.
+    expect(plan.leftovers.map((item) => item.title)).toEqual(["Elsewhere"]);
+    expect(plan.memory).toEqual([]);
 
     const rows: unknown[] = [];
+    const posted: string[] = [];
     await createImportedBot(
       services({
         routineTriggers,
         routineRowData: (_actor, routine) => {
           rows.push(routine);
           return { ...routine } as never;
+        },
+        notifyThread: async () => undefined,
+        createBot: async (_actor, request) => {
+          const db = fakeDb() as Record<string, Record<string, (args: unknown) => unknown>>;
+          const tx = new Proxy(db, {
+            get: (target, name: string) =>
+              name === "message"
+                ? new Proxy(target.message!, {
+                    get: (model, method: string) => async (args: { data?: unknown }) => {
+                      if (method === "create") posted.push(JSON.stringify(args.data));
+                      return model[method]!(args);
+                    },
+                  })
+                : target[name],
+          });
+          await request.seed(tx as never, bot.id);
+          return bot;
         },
       }),
       actor,
@@ -212,14 +230,53 @@ describe("a Grok Bot's event routines", () => {
           memory: [],
           skills: [],
           routines: plan.routines.map((routine) => routine.id),
+          leftovers: plan.leftovers.map((item) => item.id),
         },
       }),
     );
+    // The leftover is posted in the new bot's chat; no turn starts until the owner writes.
+    expect(posted.filter((message) => message.includes("## Elsewhere"))).toHaveLength(1);
     expect(rows).toMatchObject([
       { name: "Hooks", active: false, crons: [], webhookEnabled: true },
       { name: "Pulls", active: false, githubEnabled: true },
       { name: "Support", active: false, messageProvider: "slack" },
       { name: "Mail", active: false, emailSenders: "owner" },
+    ]);
+  });
+});
+
+describe("importing several Grok Bots at once", () => {
+  const exported = (bots: object[]) => [
+    {
+      path: GROK_BOT_EXPORT_PATH,
+      content: JSON.stringify({ format: "grok-bot-export", version: 1, bots }),
+    },
+  ];
+
+  it("creates each with its own name, and one refused leaves the others", async () => {
+    const names: string[] = [];
+    const results = await createImportedBots(
+      services({
+        createBot: async (_actor, request) => {
+          names.push(request.name);
+          await request.seed(fakeDb(), bot.id);
+          return { ...bot, name: request.name };
+        },
+      }),
+      actor,
+      {
+        agents: [
+          { importKey: "import-key-1", files: exported([{ name: "Bramble", memories: ["A"] }]) },
+          { importKey: "import-key-2", files: exported([{ name: "Empty", memories: [] }]) },
+          { importKey: "import-key-3", files: exported([{ name: "Wren", instructions: "Plan." }]) },
+        ],
+      },
+    );
+    expect(names).toEqual(["Bramble", "Wren"]);
+    expect(results.map((result) => ("bot" in result ? result.bot.name : "refused"))).toEqual([
+      "Bramble",
+      "refused",
+      "Wren",
     ]);
   });
 });

@@ -5,6 +5,7 @@ import { MODEL_CREDITS_EXHAUSTED_ERROR, MODEL_UNPRICED_FOR_CREDITS_ERROR } from 
 import type { PrismaClient } from "../database/client.js";
 import { isUniqueViolation } from "../database/prisma-errors.js";
 import type { Prisma } from "../generated/prisma/client.js";
+import { FREE_BYOK_ACCOUNT_SELECT } from "./billing.js";
 import { enforceModelCreditCap } from "./model-credit-cap.js";
 import {
   allocateCreditLots,
@@ -50,7 +51,10 @@ export async function unexpiredCreditAccount(
   const [account, lots, lapsed] = await prisma.$transaction(
     (tx) =>
       Promise.all([
-        tx.modelCreditAccount.findUniqueOrThrow({ where: { organizationId } }),
+        tx.modelCreditAccount.findUniqueOrThrow({
+          where: { organizationId },
+          include: { freeByokTiers: FREE_BYOK_ACCOUNT_SELECT.freeByokTiers },
+        }),
         tx.modelCreditLot.aggregate({ where: live, _sum: { availableMicros: true } }),
         tx.modelCreditLot.aggregate({
           where: { ...live, expiresAt: { lte: now } },
@@ -160,11 +164,13 @@ export async function reconcileCreditPurchase(
     const owedBefore = owed(previousLot);
     const owedNow = owed(await tx.modelCreditLot.findUniqueOrThrow({ where: { id: entry.id } }));
     const charged = existing ? storedCreditAllocations(existing) : [];
+    // Read before the return, which lowers the stored allocations in place.
+    const chargedMicros = allocatedMicros(charged);
     const covering =
       owedNow > owedBefore
         ? [...charged, ...(await allocateCreditLots(tx, organizationId, owedNow - owedBefore, now))]
         : await returnCreditLots(tx, charged, owedBefore - owedNow, now);
-    if (allocatedMicros(covering) !== allocatedMicros(charged))
+    if (allocatedMicros(covering) !== chargedMicros)
       await tx.modelCreditEntry.update({
         where: { id: entry.id },
         data: { allocations: covering },
@@ -316,6 +322,7 @@ export function hasFinalModelCost(
     usage.costUsd >= 0 &&
     (usage.costSource === "provider-reported" ||
       usage.costSource === "deployment-tariff" ||
+      usage.costSource === "free-endpoint" ||
       usage.costSource === RECONCILED_ESTIMATE_COST_SOURCE ||
       (usage.costUsd === 0 &&
         ["not-started", "provider-rejected"].includes(usage.usageSource ?? "")))

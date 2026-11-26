@@ -6,6 +6,7 @@ import {
   TOOL_STEP_CALLS_KEPT,
   toolResultTaintsRun,
   toolStepOutcomeText,
+  toolStepsHistoryText,
 } from "@rakazo/core";
 import {
   bounded,
@@ -20,6 +21,7 @@ import {
   toolNotAvailableNote,
 } from "../context/history-replay.prompt.js";
 import { neutralizeSpeakerLabels } from "../context/history-speakers.js";
+import { readTurnTranscript } from "./pi-runtime-transcript.js";
 import { normalizeAgentToolName } from "./tools/pi-runtime-tools.js";
 
 export function toPiImages(images: AgentRunRequest["currentTurnImages"]) {
@@ -34,7 +36,7 @@ export function toPiImages(images: AgentRunRequest["currentTurnImages"]) {
  * Bump when the shape of replayed history changes (roles, labels, tool steps, images), so runs
  * record which replay format they used. Part of the prompt version.
  */
-export const HISTORY_FORMAT_VERSION = 3;
+export const HISTORY_FORMAT_VERSION = 5;
 
 /**
  * Provider, api and model stamped on replayed own replies. None matches a real model, so Pi
@@ -90,6 +92,23 @@ function replayedSteps(segments: NonNullable<HistoryEntry["segments"]>): History
   return steps;
 }
 
+const TOOL_STEPS_MARKER = "[tool calls this reply made]";
+
+/**
+ * Older steps stored no calls, so they cannot replay as tool calls. Their summary still belongs
+ * in the text form. A list already written into the reply is left as stored; the history text
+ * builder strips one a bot copied, and this puts the stored steps back.
+ */
+function assistantReplayText(message: HistoryEntry): string {
+  const content = message.content;
+  if (!message.segments || content.toLowerCase().includes(TOOL_STEPS_MARKER)) return content;
+  if (replaysAsToolCalls(message.segments)) return content;
+  const steps = message.segments.flatMap((segment) => ("steps" in segment ? segment.steps : []));
+  const summary = toolStepsHistoryText(steps);
+  if (!summary) return content;
+  return content.trim() ? `${summary}\n${content}` : summary;
+}
+
 /**
  * Whether a reply replays as tool calls: every step it shows kept its tool name and its calls.
  * Older steps kept neither, and a reply with any of them stays in the text form, so a thread
@@ -111,7 +130,12 @@ function replaysAsToolCalls(segments: NonNullable<HistoryEntry["segments"]>): bo
 
 function replayedArguments(json: string | undefined): ToolCall["arguments"] {
   try {
-    const value: unknown = JSON.parse(json ?? "{}");
+    // Old calls can contain unpaired UTF-16 surrogates that a model API rejects in JSON.
+    const value: unknown = JSON.parse(json ?? "{}", (key, item: unknown) => {
+      // Leave differently named valid fields intact if repairing a key would collide with them.
+      if (/\p{Surrogate}/u.test(key)) return undefined;
+      return typeof item === "string" ? item.replace(/\p{Surrogate}/gu, "\uFFFD") : item;
+    });
     return value && typeof value === "object" && !Array.isArray(value)
       ? (value as ToolCall["arguments"])
       : {};
@@ -274,6 +298,54 @@ function replayedToolReply(
   return messages;
 }
 
+/**
+ * Earlier turns stored as they were sent, by the index of the reply that ended each, with the
+ * indexes of the messages it stands for. A turn replays this way only when those messages sit
+ * right before its reply, so nothing sent since is lost or repeated, and every tool it called is
+ * still offered under the same name.
+ */
+function storedTurns(
+  prior: AgentRunRequest["history"],
+  offered: ReadonlySet<string>,
+  deferred: ReadonlySet<string>,
+) {
+  const turns = new Map<number, NonNullable<ReturnType<typeof readTurnTranscript>>>();
+  const covered = new Set<number>();
+  for (const [index, entry] of prior.entries()) {
+    if (entry.role !== "assistant" || entry.speaker || !entry.transcript) continue;
+    const turn = readTurnTranscript(entry.transcript);
+    if (!turn) continue;
+    // A tool the run no longer offers as it was called replays with a note, from the reply.
+    const calls = turn.messages.flatMap((message) =>
+      message.role === "assistant"
+        ? message.content.flatMap((part) => (part.type === "toolCall" ? [part] : []))
+        : [],
+    );
+    if (
+      calls.some((call) =>
+        call.name === USE_TOOL
+          ? !offered.has(USE_TOOL) || !deferred.has(String(call.arguments?.name))
+          : !offered.has(call.name),
+      )
+    )
+      continue;
+    const first = index - turn.represents.length;
+    if (first < 0) continue;
+    const before = prior.slice(first, index);
+    const ids = new Set(turn.represents);
+    if (
+      ids.size !== before.length ||
+      !before.every(
+        (message, offset) => message.id && ids.has(message.id) && !covered.has(first + offset),
+      )
+    )
+      continue;
+    for (let at = first; at <= index; at += 1) covered.add(at);
+    turns.set(index, turn);
+  }
+  return { turns, covered };
+}
+
 /** What the model reads for a message by someone other than this bot or the human of a direct chat. */
 export function speakerText(speaker: string, text: string): string {
   return `[${speaker}]: ${neutralizeSpeakerLabels(text)}`;
@@ -314,7 +386,8 @@ export function toHistory(
     duplicatePromptIndex < 0
       ? history
       : history.filter((_, index) => index !== duplicatePromptIndex);
-  return prior.flatMap((m): HistoryMessage[] => {
+  const stored = storedTurns(prior, offered, deferred);
+  return prior.flatMap((m, index): HistoryMessage[] => {
     const created = m.createdAt ? Date.parse(m.createdAt) : Number.NaN;
     const common = {
       timestamp: Number.isNaN(created) ? 0 : created,
@@ -322,15 +395,33 @@ export function toHistory(
       rakazoMessageId: m.id,
       rakazoCreatedAt: m.createdAt,
     };
+    const turn = stored.turns.get(index);
+    // The whole turn goes in under its reply, as sent: its prompt with that turn's notes, each
+    // step's calls and results, and the reply.
+    if (turn) {
+      // The prompt keeps its message's id, so history lookups still list what the person said;
+      // the rest of the turn belongs to the reply.
+      const { prompt } = turn;
+      return turn.messages.map(
+        (message, at) =>
+          ({
+            ...message,
+            ...common,
+            ...(prompt && at === prompt.at ? { rakazoMessageId: prompt.id } : {}),
+          }) as HistoryMessage,
+      );
+    }
+    if (stored.covered.has(index)) return [];
     if (m.role === "assistant" && !m.speaker) {
       if (offered.size > 0 && m.segments && replaysAsToolCalls(m.segments))
         return replayedToolReply(m, m.segments, common, offered, deferred);
       // A reply whose blocks render to nothing has no text to replay.
-      if (!m.content.trim()) return [];
+      const text = assistantReplayText(m);
+      if (!text.trim()) return [];
       return [
         {
           role: "assistant" as const,
-          content: [{ type: "text" as const, text: m.content }],
+          content: [{ type: "text" as const, text }],
           ...HISTORY_ASSISTANT,
           usage: NO_USAGE,
           stopReason: "stop" as const,

@@ -267,7 +267,7 @@ async function runTurn({
       taughtSkill: { findMany: vi.fn(async () => []) },
       vaultCredential: { findMany: vi.fn(async () => []) },
       agentSkill: { findMany: vi.fn(async () => []) },
-      scratchpadItem: { findMany: vi.fn(async () => []) },
+      scratchpadItem: { findMany: vi.fn(async () => []), count: vi.fn(async () => 0) },
       externalEffect: { findMany: vi.fn(async () => []) },
       userActionApprovalRule: { findMany: vi.fn(async () => []) },
       userActionAutoReviewPreference: { findUnique: vi.fn(async () => null) },
@@ -350,7 +350,8 @@ describe("a main model that cannot start runs on the member's backup", () => {
       apiKey: "fake-backup-key",
       connectionId: connection(BACKUP.provider, "secret-backup").id,
     });
-    expect(request?.model.callObserver).toBeUndefined();
+    expect(request?.model.billing).not.toBe("credits");
+    expect(request?.model.callObserver?.beforeCall).toEqual(expect.any(Function));
     expect(run).toMatchObject({ modelProvider: BACKUP.provider, modelId: BACKUP.modelId });
     expect(finalizeRun).not.toHaveBeenCalledWith(expect.objectContaining({ outcome: "failed" }));
   });

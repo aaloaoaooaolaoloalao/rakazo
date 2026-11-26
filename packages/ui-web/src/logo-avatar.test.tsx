@@ -1,5 +1,5 @@
 import { BOT_COLOR_LIST } from "@rakazo/contracts";
-import { contrastRatio, seededLogoAvatarColor } from "@rakazo/core";
+import { contrastRatio, resolvePersonaColorDef, seededLogoAvatarColor } from "@rakazo/core";
 import { renderToString } from "react-dom/server";
 import { describe, expect, it } from "vitest";
 import { BotAvatar } from "./bot-avatar.js";
@@ -14,7 +14,7 @@ describe("logo-derived avatar prototype", () => {
       );
       expect(
         renderToString(<BotAvatar color="" identity={identity} avatarSet="rakazo" />),
-      ).toContain(`data-color="${expected}"`);
+      ).toContain(`data-color="${resolvePersonaColorDef(identity, "#F97316").hex}"`);
     }
   });
   it("renders the eye-free brand body with vector eyes and an accessible name", () => {

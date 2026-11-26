@@ -12,9 +12,11 @@ import { messages as nl } from "@rakazo/i18n/locales/nl/messages.po";
 import { messages as pl } from "@rakazo/i18n/locales/pl/messages.po";
 import { messages as ptBR } from "@rakazo/i18n/locales/pt-BR/messages.po";
 import { messages as ru } from "@rakazo/i18n/locales/ru/messages.po";
+import { messages as th } from "@rakazo/i18n/locales/th/messages.po";
 import { messages as tr } from "@rakazo/i18n/locales/tr/messages.po";
 import { messages as zhCN } from "@rakazo/i18n/locales/zh-CN/messages.po";
 import { messages as zhTW } from "@rakazo/i18n/locales/zh-TW/messages.po";
+import { bestEffort } from "@rakazo/logging/best-effort";
 import { useSyncExternalStore } from "react";
 import { installPluralRules } from "./plural-rules";
 import type { UiLocale } from "./ui-locale";
@@ -36,6 +38,7 @@ const catalogs: Record<UiLocale, Messages> = {
   ko,
   "pt-BR": ptBR,
   tr,
+  th,
 };
 
 installPluralRules();
@@ -60,8 +63,56 @@ export function getActiveUiLocale(): UiLocale {
   return activeLocale;
 }
 
+type DeviceDateFormat = { region: string | null; hourCycle: "h12" | "h23" | null };
+
+const NO_DEVICE_DATE_FORMAT: DeviceDateFormat = { region: null, hourCycle: null };
+let deviceDateFormat = NO_DEVICE_DATE_FORMAT;
+
+/**
+ * The locale dates, times and numbers are formatted in: the app language written the way the
+ * phone's region writes it, on the phone's 12- or 24-hour clock (`en-GB-u-hc-h23`).
+ */
 export function dateLocaleForUi(locale: UiLocale = activeLocale): string {
-  return locale === "en" ? "en-US" : htmlLangForLocale(locale);
+  const language = htmlLangForLocale(locale);
+  const { region, hourCycle } = deviceDateFormat;
+  // A language that names its own region (zh-TW, pt-BR) keeps it: there the region picks the wording.
+  let base = language;
+  if (!language.includes("-")) {
+    if (region) base = `${language}-${region}`;
+    else if (locale === "en") base = "en-US";
+  }
+  return hourCycle ? `${base}-u-hc-${hourCycle}` : base;
+}
+
+export function useDateLocale(): string {
+  return useSyncExternalStore(subscribeI18n, dateLocaleForUi, dateLocaleForUi);
+}
+
+export async function refreshDeviceDateFormat(): Promise<void> {
+  const format = await bestEffort(
+    "read device date format",
+    import("expo-localization").then(({ getLocales, getCalendars }): DeviceDateFormat => {
+      const region = getLocales()[0]?.regionCode;
+      const uses24hourClock = getCalendars()[0]?.uses24hourClock;
+      return {
+        region: region && /^([A-Z]{2}|\d{3})$/.test(region) ? region : null,
+        hourCycle: uses24hourClock === true ? "h23" : uses24hourClock === false ? "h12" : null,
+      };
+    }),
+  );
+  if (format) updateDeviceDateFormat(format);
+}
+
+function updateDeviceDateFormat(format: DeviceDateFormat): void {
+  if (format.region === deviceDateFormat.region && format.hourCycle === deviceDateFormat.hourCycle)
+    return;
+  deviceDateFormat = format;
+  emit();
+}
+
+/** Test-only: set the phone's date preferences without native modules. */
+export function setDeviceDateFormatForTests(format: Partial<DeviceDateFormat>): void {
+  updateDeviceDateFormat({ ...NO_DEVICE_DATE_FORMAT, ...format });
 }
 
 /** The app language, re-rendering when it changes. Strings come from Lingui's `useLingui`. */
@@ -119,6 +170,7 @@ export async function bootstrapI18n(): Promise<UiLocale> {
       ? process.env.EXPO_PUBLIC_DEFAULT_UI_LOCALE
       : null;
   const locale = resolveUiLocale({ stored, envDefault, deviceLanguage: await deviceLanguage() });
+  await refreshDeviceDateFormat();
   activateUiLocale(locale);
   await applyDirection(locale);
   return locale;
@@ -153,6 +205,7 @@ export async function setUiLocale(locale: UiLocale): Promise<UiLocale> {
 /** Test-only: set the in-memory locale without I/O. */
 export function resetI18nForTests(locale: UiLocale = "en"): void {
   activeLocale = locale;
+  deviceDateFormat = NO_DEVICE_DATE_FORMAT;
   i18n.activate(locale);
   uiLocaleWriteChain = Promise.resolve();
   emit();

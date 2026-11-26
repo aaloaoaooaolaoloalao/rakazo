@@ -6,7 +6,6 @@ import { getLogger } from "@rakazo/logging";
 import { createBrowserProvider } from "../../browser/browser-provider-factory.js";
 import { createMediaGenerationProvider } from "../../media/media-generation-factory.js";
 import { createPaidServiceProvider } from "../../payments/paid-services-factory.js";
-import { holdRoutineRunForConversation } from "../../routines/routine-conversation.js";
 import { createWebProvider } from "../../web/web-provider-factory.js";
 import { assembleRunTurn } from "../assembly/run-assembly.js";
 import {
@@ -14,6 +13,7 @@ import {
   retryRoutineRun,
   wakeRoutine,
 } from "../assembly/run-routines.js";
+import { holdRunForChat } from "../lifecycle/chat-wait.js";
 import type { RunExecutorServices } from "../lifecycle/run-attempt.js";
 import {
   claimRunAttempt,
@@ -21,7 +21,11 @@ import {
   holdRun,
   releaseRunHold,
 } from "../lifecycle/run-attempt.js";
-import { failRunBeforeTurn, retryRunSetup, runEndedForThisWorker } from "../lifecycle/run-lifecycle.js";
+import {
+  failRunBeforeTurn,
+  retryRunSetup,
+  runEndedForThisWorker,
+} from "../lifecycle/run-lifecycle.js";
 import { resolveConnectedRunModel, resolveRunModel } from "../turn/run-model.js";
 import { runModelTurn } from "../turn/run-model-turn.js";
 import type { ExecutorDeps } from "./executor-deps.js";
@@ -85,7 +89,7 @@ export function createRunExecutor(executorDeps: ExecutorDeps) {
       if (!run) return;
       const claim = await claimRunAttempt(baseDeps, run, workerId);
       if (!claim) {
-        await holdRoutineRunForConversation(baseDeps, run);
+        await holdRunForChat(baseDeps, run);
         return;
       }
       const hold = holdRun(baseDeps, claim);

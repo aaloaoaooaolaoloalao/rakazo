@@ -7,6 +7,7 @@ import {
   resolveBotWorkspacePath,
   teamBotWorkspaceDirectory,
   workspaceCwd,
+  workspacePath,
 } from "./computer-support.js";
 import { teamWorkspaceInstruction } from "./computer-support.prompt.js";
 
@@ -27,19 +28,29 @@ describe("workspaceCwd", () => {
     expect(workspaceCwd(root, "/etc")).toBe(`${root}/etc`);
   });
 
-  it("rejects '..' and '.' segments, including under an absolute workspace path", () => {
+  it("rejects '..' segments, including under an absolute workspace path", () => {
     for (const cwd of [
       `${root}/../etc`,
       `${root}/notes/../../..`,
       "/home/rakazo/../etc",
       "/home/user/../../etc",
       "../etc",
-      "notes/./a",
+      "notes/./../..",
     ]) {
       expect(() => workspaceCwd(root, cwd, ["/home/user"])).toThrow(
         "Path escapes the computer workspace",
       );
     }
+  });
+});
+
+describe("workspacePath", () => {
+  it("keeps only the tail of a path already under the workspace root", () => {
+    const root = "/home/user/rakazo-home";
+    expect(workspacePath(root, `${root}/shared/x.md`)).toBe(`${root}/shared/x.md`);
+    expect(
+      workspacePath(root, resolveBotWorkspacePath("team", "bot-1", `${root}/shared/x.md`)),
+    ).toBe(`${root}/shared/x.md`);
   });
 });
 
@@ -50,6 +61,10 @@ describe("Team Computer bot folders", () => {
       "bots/bot-1/notes/result.txt",
     );
     expect(resolveBotWorkspacePath("team", "bot-1", "")).toBe("bots/bot-1");
+    expect(resolveBotWorkspacePath("team", "bot-1", ".")).toBe("bots/bot-1");
+    expect(resolveBotWorkspacePath("team", "bot-1", "./notes/./x.md")).toBe(
+      "bots/bot-1/notes/x.md",
+    );
     expect(resolveBotWorkspaceCwd("team", "bot-1", undefined)).toBe("bots/bot-1");
     expect(resolveBotWorkspaceCwd("team", "bot-1", "projects/site")).toBe(
       "bots/bot-1/projects/site",

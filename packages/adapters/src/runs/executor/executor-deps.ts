@@ -35,6 +35,7 @@ export interface ExecutorDeps {
   /** The present moment the agent is told; evals move it to a follow-up's due time. */
   now?: () => Date;
   maxUploadSizeBytes?: number;
+  maxAttachmentsPerMessage?: number;
   contextStrategy?: AgentContextStrategy;
   prisma: PrismaClient;
   events: ThreadEvents;
@@ -77,7 +78,9 @@ export interface ExecutorDeps {
   };
   /** Sends what runs say to the chat apps their turns came from; absent without one. */
   messagingDelivery?: MessagingDelivery;
-  listConnectedPluginSlugs?: (userId: string) => Promise<string[]>;
+  listConnectedPlugins?: (
+    userId: string,
+  ) => Promise<{ slugs: string[]; refs?: string[]; refsFailed?: boolean }>;
   /** Builtin web_search / web_fetch. Defaults to keyless HTTP when omitted. */
   web?: WebProvider;
   mediaGeneration?: MediaGenerationProvider;

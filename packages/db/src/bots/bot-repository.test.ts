@@ -48,7 +48,7 @@ function reposFor(memoryScope: string | null) {
 }
 
 describe("createRepos.listBots", () => {
-  it.each([undefined, "organic", "rakazo"])(
+  it.each([undefined, "rakazo"])(
     "preserves appearance metadata on reload (set=%s)",
     async (avatarSet) => {
       const rows = ["#8B5CF6", "#8B5CF6::shape_3", "data:image/png;base64,aGVsbG8="].map(
@@ -663,6 +663,7 @@ describe("createRepos.createBot computer", () => {
       },
       computer: {
         findUnique: vi.fn(async () => null),
+        findFirst: vi.fn(async () => null),
         upsert: vi.fn(async (args: { create: { scope: string; scopeKey: string } }) => {
           upserts.push(args.create.scopeKey);
           computer = { id: args.create.scopeKey, scope: args.create.scope };
@@ -696,7 +697,7 @@ describe("createRepos.createBot computer", () => {
   it("keeps Team when no default is configured", async () => {
     const { bot, upserts } = await create(undefined);
     expect(bot.computerMode).toBe("team");
-    expect(upserts).toEqual(["team:ws-1:owner-1"]);
+    expect(upserts).toEqual(["team:user:owner-1"]);
   });
 
   it("gives a bot without a chosen mode the configured default", async () => {

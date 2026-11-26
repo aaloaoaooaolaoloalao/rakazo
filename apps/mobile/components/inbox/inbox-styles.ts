@@ -32,7 +32,19 @@ export function createInboxStyles() {
       paddingTop: 8,
       paddingBottom: 10,
     },
+    headerTitle: {
+      flex: 1,
+      minWidth: 0,
+      alignItems: "flex-start",
+      overflow: "hidden",
+    },
     headerActions: {
+      flexShrink: 0,
+      flexDirection: "row",
+      alignItems: "center",
+      gap: 8,
+    },
+    headerGroup: {
       flexDirection: "row",
       alignItems: "center",
       padding: 2,
@@ -89,11 +101,16 @@ export function createInboxStyles() {
       paddingHorizontal: 20,
       paddingTop: 28,
     },
+    newBot: {
+      alignItems: "center",
+      paddingHorizontal: 20,
+      paddingTop: 28,
+    },
     row: {
       flexDirection: "row",
       alignItems: "center",
       paddingHorizontal: INBOX_ROW.padding,
-      paddingVertical: 14,
+      paddingVertical: 10,
       gap: INBOX_ROW.gap,
     },
     rowSelected: {
@@ -105,20 +122,21 @@ export function createInboxStyles() {
     pinnedTiles: {
       flexDirection: "row",
       flexWrap: "wrap",
+      // A short last row sits centred under the full one.
+      justifyContent: "center",
       paddingHorizontal: 8,
-      paddingTop: 4,
+      paddingTop: 12,
       paddingBottom: 12,
     },
     pinnedTile: {
-      width: "33.33%",
       alignItems: "center",
-      paddingVertical: 8,
+      paddingVertical: 3,
       paddingHorizontal: 4,
       borderRadius: 16,
       gap: 4,
     },
     pinnedName: {
-      color: native.secondaryLabel,
+      color: native.label,
       fontSize: 13,
       fontWeight: "500",
       textAlign: "center",
@@ -162,7 +180,8 @@ export function createInboxStyles() {
       flexShrink: 0,
       maxWidth: "100%",
       color: native.label,
-      ...typeScale.cardTitle,
+      fontSize: 16,
+      lineHeight: 21,
       writingDirection: "auto",
     },
     time: {
@@ -188,18 +207,21 @@ export function createInboxStyles() {
       flexDirection: "row",
       alignItems: "center",
       paddingHorizontal: 16,
-      paddingTop: 8,
     },
+    // Headings keep a 44pt target, with the spare height above the title so it sits close to
+    // the chats it heads.
     spaceSelect: {
       flex: 1,
       minHeight: 44,
+      paddingTop: 16,
       justifyContent: "center",
     },
     spaceTitleRow: { flexDirection: "row", alignItems: "center", gap: 6 },
     spaceTitle: {
-      color: native.label,
-      fontSize: 14,
-      fontWeight: "600",
+      // A long name truncates so the caret after it stays in view.
+      flexShrink: 1,
+      color: native.secondaryLabel,
+      ...typeScale.secondary,
       writingDirection: "auto",
     },
     spaceActions: {
@@ -222,8 +244,7 @@ export function createInboxStyles() {
       alignItems: "center",
       gap: 6,
       paddingHorizontal: 16,
-      paddingTop: 12,
-      paddingBottom: 4,
+      paddingTop: 18,
     },
     archivedRow: { flex: 0, width: "100%" },
     sectionTitle: {

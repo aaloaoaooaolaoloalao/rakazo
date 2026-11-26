@@ -75,16 +75,29 @@ export class WorkspacePathError extends Error {
 
 export function normalizeWorkspacePath(value: string): string {
   const normalized = value.replace(/\\/g, "/").replace(/^\/+/, "");
-  const segments = normalized.split("/").filter(Boolean);
-  if (segments.some((segment) => segment === "." || segment === "..")) {
-    throw new WorkspacePathError("Path escapes the computer workspace");
-  }
+  // "." stays where it is, so "." and "./notes" mean the root and notes; only ".." can leave.
+  const segments = normalized.split("/").filter((segment) => segment && segment !== ".");
+  if (segments.includes("..")) throw new WorkspacePathError("Path escapes the computer workspace");
   return segments.join("/");
 }
 
+/**
+ * Bots see the real root in their shell, so a path already under it keeps only its tail
+ * instead of nesting the root inside itself.
+ */
+export function workspaceRelativePath(root: string, value: string): string {
+  const normalized = normalizeWorkspacePath(value);
+  const rootRelative = normalizeWorkspacePath(root);
+  if (!rootRelative) return normalized;
+  if (normalized === rootRelative) return "";
+  return normalized.startsWith(`${rootRelative}/`)
+    ? normalized.slice(rootRelative.length + 1)
+    : normalized;
+}
+
 export function workspacePath(root: string, relative: string): string {
-  const normalized = normalizeWorkspacePath(relative);
-  return normalized ? path.posix.join(root, normalized) : root;
+  const tail = workspaceRelativePath(root, relative);
+  return tail ? path.posix.join(root, tail) : root;
 }
 
 /** The workspace path bots see on every computer. */
@@ -93,7 +106,7 @@ const VIRTUAL_HOME = "/home/rakazo";
 /**
  * The directory a command runs in. Empty, ".", "/", the workspace root and any home alias
  * mean the root; absolute paths under one of them keep their tail; anything else is taken
- * relative to the root. "." and ".." segments throw, so a cwd cannot leave the workspace.
+ * relative to the root. ".." segments throw, so a cwd cannot leave the workspace.
  */
 export function workspaceCwd(
   root: string,

@@ -176,6 +176,8 @@ async function runLoop(
   };
   let answeredMessageIds = ["steer-1"];
   const prisma = {
+    // Ask: these cover loop guards and redaction, not what the approval model checks.
+    userActionAutoReviewPreference: { findUnique: vi.fn(async () => ({ enabled: false })) },
     externalEffect,
     steeringMessage: {
       findMany: vi.fn(async () => answeredMessageIds.map((messageId) => ({ messageId }))),
@@ -326,9 +328,6 @@ async function runLoop(
   const executor = createRunExecutor({
     prisma: proxied,
     deploymentModelKey: "fake-deployment-key",
-    deploymentModelConfigured: true,
-    billingEnabled: false,
-    secretStore: { load: vi.fn(async () => "") },
     runtime: new PiAgentRuntime(),
     sandbox,
     // A real save takes a while, and the model must not keep going while it runs.

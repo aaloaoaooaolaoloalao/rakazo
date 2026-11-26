@@ -36,5 +36,6 @@ describe("collaboration transcript markers", () => {
     expect(html).toContain('role="status"');
     expect(html).toContain('data-mood="working"');
     expect(html).toContain("data-spark-dots");
+    expect(html).toContain('<span class="text-shimmer">Searching the web: injury news</span>');
   });
 });

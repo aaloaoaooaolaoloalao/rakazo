@@ -103,6 +103,8 @@ function within<T>(context: DbContext, fn: () => T | PromiseLike<T>): Promise<T>
 
 export const ROW_SECURITY_MODELS: ReadonlySet<string> = new Set([
   "BillingAuditEvent",
+  "ComputerAllowanceGrant",
+  "MediaCharge",
   "PushRegistration",
   "CallPushDevice",
   "WorkActivityToken",
@@ -111,8 +113,16 @@ export const ROW_SECURITY_MODELS: ReadonlySet<string> = new Set([
   "Thread",
   "ThreadRead",
   "Message",
+  "PrunedMessageNonce",
   "Event",
   "MemoryDocument",
+  "MeetingSession",
+  "MeetingAllowanceUse",
+  "MeetingCalendarAuthorization",
+  "MeetingCalendarBooking",
+  "MeetingCalendarConnection",
+  "MeetingCalendarRule",
+  "NativeCalendarRequest",
   "MemoryRevision",
   "Artifact",
   "Secret",
@@ -146,6 +156,7 @@ export const ROW_SECURITY_MODELS: ReadonlySet<string> = new Set([
   "BotMcpServer",
   "Computer",
   "ComputerRun",
+  "ComputerHomeVersion",
   "HomeDeletionNotice",
   "Board",
   "Ticket",
@@ -160,7 +171,6 @@ export const ROW_SECURITY_MODELS: ReadonlySet<string> = new Set([
   "UsageRecord",
   "TokenBudgetHold",
   "ApiRateBucket",
-  "SpeechAllowance",
   "SpeechCost",
   "ScratchpadItem",
   "BotEmailMessage",
@@ -177,6 +187,11 @@ export const ROW_SECURITY_MODELS: ReadonlySet<string> = new Set([
   "AuditEvent",
   "Page",
   "PageVersion",
+  "PageImage",
+  "PageGrant",
+  "PageComment",
+  "PageReaderState",
+  "PageRevisionRequest",
 ]);
 
 /**
