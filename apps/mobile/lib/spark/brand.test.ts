@@ -95,7 +95,7 @@ describe("SparkAI brand overlay", () => {
     expect(branded.slug).toBe(SPARK_SLUG);
     expect(branded.slug).toBe("sparkai-");
     expect(branded.scheme).toBe("rakazo");
-    expect(branded.version).toBe("1.0.21");
+    expect(branded.version).toBe("3.0.1");
     expect(branded.owner).toBe(SPARK_EXPO_OWNER);
     expect(branded.owner).toBe("alolololololols-team");
     expect(branded.ios).toMatchObject({
@@ -154,14 +154,14 @@ describe("SparkAI brand overlay", () => {
   it("lets env raise the version, build, project, and owner above the defaults", () => {
     const branded = applySparkBrand(upstream, {
       EXPO_PUBLIC_SPARK: "true",
-      SPARK_APP_VERSION: "1.2.0",
+      SPARK_APP_VERSION: "3.1.0",
       SPARK_IOS_BUILD_NUMBER: "4",
       SPARK_ANDROID_VERSION_CODE: "12",
       SPARK_EAS_PROJECT_ID: "spark-project",
       SPARK_EXPO_OWNER: "spark-owner",
     });
 
-    expect(branded.version).toBe("1.2.0");
+    expect(branded.version).toBe("3.1.0");
     expect(branded.ios?.buildNumber).toBe("10");
     expect(branded.android?.versionCode).toBe(12);
     expect(branded.owner).toBe("spark-owner");
