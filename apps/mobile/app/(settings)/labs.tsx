@@ -15,8 +15,10 @@ import { accountRpcQuery, queryClient, useSave } from "../../lib/query/query";
 import { useScreenQuery } from "../../lib/query/screen-query";
 import { ACCOUNT_SETTINGS } from "../../lib/query/settings-target";
 import { createSettingsPageStyles } from "../../lib/settings/settings-page-styles";
+import { showLabs } from "../../lib/spark/product";
+import { sparkScreen } from "../../lib/spark/spark-screen";
 
-export default function Labs() {
+function Labs() {
   const sideInsets = useSideInsets();
   const { t } = useLingui();
   const styles = useThemedStyles(createSettingsPageStyles);
@@ -67,4 +69,8 @@ export default function Labs() {
       </ScrollView>
     </SafeAreaView>
   );
+}
+
+export default function LabsRoute() {
+  return sparkScreen(showLabs(), <Labs />);
 }

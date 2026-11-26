@@ -25,8 +25,10 @@ import {
   refreshOrganizations,
   useOrganizations,
 } from "../../lib/spaces/organizations";
+import { showOrganizations } from "../../lib/spark/product";
+import { sparkScreen } from "../../lib/spark/spark-screen";
 
-export default function OrganizationSettings() {
+function OrganizationSettings() {
   const { t } = useLingui();
   const router = useRouter();
   const sideInsets = useSideInsets();
@@ -198,4 +200,8 @@ function createStyles() {
     content: { width: "100%", padding: 20, gap: 24, paddingBottom: 40 },
     error: { color: tokens.destructive, fontSize: 14 },
   });
+}
+
+export default function OrganizationSettingsRoute() {
+  return sparkScreen(showOrganizations(), <OrganizationSettings />);
 }

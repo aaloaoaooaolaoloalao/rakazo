@@ -7,6 +7,7 @@ import {
   closeSettingsSheet,
   isSettingsLink,
   linkScreen,
+  showSparkRoute,
   stripSettingsReturn,
 } from "../lib/settings/settings-sheet";
 
@@ -23,6 +24,7 @@ export function redirectSystemPath({ path, initial }: { path: string; initial: b
   receiveIncomingShare(isShare, initial);
   // The in-app browser already handed this to the sign-in that opened it; stay put.
   if (browserCallbacks.has(screen)) return "";
+  if (screen && !showSparkRoute(screen)) return "/";
   if (!isSettingsLink(path)) closeSettingsSheet();
   return isShare ? "/share" : stripSettingsReturn(path);
 }

@@ -46,6 +46,8 @@ import { native, useThemedStyles } from "../../lib/native/native";
 import { queryClient, rpcQuery } from "../../lib/query/query";
 import type { SettingsTarget } from "../../lib/query/settings-target";
 import { settingsRpc, settingsTarget } from "../../lib/query/settings-target";
+import { showVoiceSettings } from "../../lib/spark/product";
+import { sparkScreen } from "../../lib/spark/spark-screen";
 import { loadDeviceVoiceEnabled, saveDeviceVoiceEnabled } from "../../lib/voice/device-voice";
 import { speakText } from "../../lib/voice/voice";
 import { createVoiceStyles } from "../../lib/voice/voice-settings-styles";
@@ -104,7 +106,7 @@ function cachedVoiceSettings(target: SettingsTarget) {
  * The voice that reads replies out loud. Opened with a Space, it edits that Space's override;
  * this device's voice and sounds stay with the device, so only the account's screen shows them.
  */
-export default function VoiceSettings() {
+function VoiceSettings() {
   const params = useLocalSearchParams<{ spaceId?: string }>();
   const target = useMemo(() => settingsTarget(params.spaceId), [params.spaceId]);
   const rpc = useMemo(() => settingsRpc(target), [target]);
@@ -995,4 +997,8 @@ export default function VoiceSettings() {
       </ScrollView>
     </SafeAreaView>
   );
+}
+
+export default function VoiceSettingsScreen() {
+  return sparkScreen(showVoiceSettings(), <VoiceSettings />);
 }

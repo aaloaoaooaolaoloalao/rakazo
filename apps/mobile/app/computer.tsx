@@ -71,6 +71,7 @@ import { useMobileTokens } from "../lib/native/native";
 import { iosAtLeast } from "../lib/native/native-controls";
 import { useScreenHeader } from "../lib/navigation/screen-header";
 import { useAppForeground } from "../lib/platform/app-foreground";
+import { showBilling } from "../lib/spark/product";
 
 export default function Computer() {
   const sideInsets = useSideInsets();
@@ -490,7 +491,7 @@ export default function Computer() {
         </Text>
       ) : null}
       {retryScreenAction}
-      {allowanceUsed ? (
+      {allowanceUsed && showBilling() ? (
         <NativeActionButton
           label={t`Upgrade`}
           prominence="primary"

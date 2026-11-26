@@ -23,6 +23,7 @@ import { native, useMobileTokens, useThemedStyles } from "../lib/native/native";
 import { rpcQuery } from "../lib/query/query";
 import { useScreenQuery } from "../lib/query/screen-query";
 import { useBotRoutines } from "../lib/routines/routine-store";
+import { showMeetings } from "../lib/spark/product";
 
 /** Keyed by the bot, so a switch saving for one bot never takes a tap meant for another. */
 export default function BotProfile() {
@@ -152,7 +153,7 @@ function BotProfileScreen() {
           }
           onPress={() => router.push({ pathname: "/artifacts", params: { botId } })}
         />
-        {bot?.meetingsEnabled ? (
+        {showMeetings() && bot?.meetingsEnabled ? (
           <SettingsRow
             key="meetings"
             accessibilityRole="button"

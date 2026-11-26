@@ -15,6 +15,7 @@ import type { InboxItem, InboxSpace } from "../../lib/inbox/inbox-spaces";
 import { canDeleteInboxSpace, inboxItemKey } from "../../lib/inbox/inbox-spaces";
 import type { useInboxChatActions } from "../../lib/inbox/use-inbox-chat-actions";
 import { native, useThemedStyles } from "../../lib/native/native";
+import { showOrganizations } from "../../lib/spark/product";
 import { NativeActionButton } from "../native/native-action-button";
 import type { NativeRowMenu } from "../native/native-row";
 import { NativeRow } from "../native/native-row";
@@ -359,9 +360,13 @@ export function useInboxRenderItem({
                         image: "person.crop.circle.badge.plus",
                         disabled: spaceBusy || !!spaceRecoveryId,
                       },
-                      { id: "members", title: t`Members`, image: "person.2" },
-                      { id: "settings", title: t`Settings`, image: "gearshape" },
-                      ...(canDeleteInboxSpace(item.space)
+                      ...(showOrganizations()
+                        ? [
+                            { id: "members", title: t`Members`, image: "person.2" as const },
+                            { id: "settings", title: t`Settings`, image: "gearshape" as const },
+                          ]
+                        : []),
+                      ...(showOrganizations() && canDeleteInboxSpace(item.space)
                         ? [
                             {
                               id: "delete",

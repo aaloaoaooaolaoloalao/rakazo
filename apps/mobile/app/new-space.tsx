@@ -13,8 +13,10 @@ import { useSave } from "../lib/query/query";
 import { ACCOUNT_SETTINGS } from "../lib/query/settings-target";
 import { isSearchInboxSession, searchInboxSession } from "../lib/search/search-inbox";
 import { refreshOrganizations } from "../lib/spaces/organizations";
+import { showOrganizations } from "../lib/spark/product";
+import { sparkScreen } from "../lib/spark/spark-screen";
 
-export default function NewSpace() {
+function NewSpace() {
   const sideInsets = useSideInsets();
   const { t } = useLingui();
   const tokens = useMobileTokens();
@@ -90,4 +92,8 @@ export default function NewSpace() {
       </ScrollView>
     </>
   );
+}
+
+export default function NewSpaceRoute() {
+  return sparkScreen(showOrganizations(), <NewSpace />);
 }

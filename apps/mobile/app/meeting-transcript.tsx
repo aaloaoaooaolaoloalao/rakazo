@@ -11,8 +11,10 @@ import { native, useThemedStyles } from "../lib/native/native";
 import { useScreenHeader } from "../lib/navigation/screen-header";
 import { formRead, queryClient, rpcQuery, useSave } from "../lib/query/query";
 import { useScreenQuery } from "../lib/query/screen-query";
+import { showMeetings } from "../lib/spark/product";
+import { sparkScreen } from "../lib/spark/spark-screen";
 
-export default function MeetingTranscriptScreen() {
+function MeetingTranscriptScreen() {
   const { t } = useLingui();
   const router = useRouter();
   const { botId = "", id = "" } = useLocalSearchParams<{ botId?: string; id?: string }>();
@@ -124,4 +126,8 @@ function createStyles() {
     body: { color: native.label, fontSize: 16, lineHeight: 23 },
     error: { color: mobileTokens().destructive },
   });
+}
+
+export default function MeetingTranscriptScreenRoute() {
+  return sparkScreen(showMeetings(), <MeetingTranscriptScreen />);
 }

@@ -512,3 +512,6 @@ export function renderTokensCss(): string {
     renderBlock('[data-theme="light"]', "light", webLightTokens),
   ].join("\n\n")}\n`;
 }
+
+export { PRODUCT_UI } from "./product-ui.js";
+export { applySparkMobileTokens, sparkDarkAccent, sparkLightAccent } from "./spark-overlay.js";

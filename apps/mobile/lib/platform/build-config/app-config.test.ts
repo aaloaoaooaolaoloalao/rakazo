@@ -9,6 +9,8 @@ beforeEach(() => {
   vi.stubEnv("RAKAZO_APPLE_TEAM_ID", undefined);
   vi.stubEnv("RAKAZO_EXPO_PROJECT_ID", undefined);
   vi.stubEnv("RAKAZO_EXPO_OWNER", undefined);
+  vi.stubEnv("SPARK", undefined);
+  vi.stubEnv("EXPO_PUBLIC_SPARK", undefined);
 });
 
 afterEach(() => {

@@ -21,6 +21,7 @@ import { checkDeviceTimezone } from "../i18n/device-timezone";
 import { getActiveUiLocale } from "../i18n/i18n";
 import { appBadgeGeneration } from "../notifications/app-badge";
 import { ensureOrganizations } from "../spaces/organizations";
+import { showBilling } from "../spark/product";
 import { askFirstBot, needsFirstBot } from "./first-bot";
 import { retainInboxValue } from "./inbox-retention";
 import { saveInbox } from "./saved-chats";
@@ -91,7 +92,13 @@ export function useInbox(spaceActionRef: RefObject<{ busy: boolean; recoveryId: 
             // Only while this session is still the live one: a reply after sign-out must not
             // restore the previous owner's link.
             if (current) rememberReferral(spaceId, billing.referral);
-            if (current && billing.funding !== undefined && !billing.access && !isPaywallShown())
+            if (
+              current &&
+              showBilling() &&
+              billing.funding !== undefined &&
+              !billing.access &&
+              !isPaywallShown()
+            )
               router.push("/paywall");
           })
           .catch(() => undefined);

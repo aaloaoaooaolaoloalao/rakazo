@@ -11,12 +11,14 @@ import { rpcQuery } from "../../lib/query/query";
 import { useScreenQuery } from "../../lib/query/screen-query";
 import { openFromSettings } from "../../lib/settings/back-to-settings";
 import { openFromSettingsSheet } from "../../lib/settings/settings-sheet";
+import { showOrganizations } from "../../lib/spark/product";
+import { sparkScreen } from "../../lib/spark/spark-screen";
 
 /**
  * One Space shows its members under its name, and its own settings only when some were customized
  * while there were others; several each open their own settings.
  */
-export default function SpacesSettings() {
+function SpacesSettings() {
   const { t } = useLingui();
   const router = useRouter();
   const sideInsets = useSideInsets();
@@ -115,4 +117,8 @@ function createStyles() {
     screen: { flex: 1, backgroundColor: native.groupedPage },
     content: { width: "100%", padding: 20, gap: 24, paddingBottom: 40 },
   });
+}
+
+export default function SpacesSettingsRoute() {
+  return sparkScreen(showOrganizations(), <SpacesSettings />);
 }

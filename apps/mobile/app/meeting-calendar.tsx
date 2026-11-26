@@ -23,11 +23,13 @@ import { showIOSActionSheet } from "../lib/native/ios-action-sheet";
 import { useScreenHeader } from "../lib/navigation/screen-header";
 import { rpcQuery, useSave } from "../lib/query/query";
 import { useScreenQuery } from "../lib/query/screen-query";
+import { showMeetings } from "../lib/spark/product";
+import { sparkScreen } from "../lib/spark/spark-screen";
 
 type Action = { kind: "connect" | "disconnect" } | { kind: MeetingCalendarAction; eventId: string };
 type UpcomingEvent = RpcOutput<"meetingCalendar/upcoming">["events"][number];
 
-export default function MeetingCalendarScreen() {
+function MeetingCalendarScreen() {
   const { botId = "" } = useLocalSearchParams<{ botId: string }>();
   const { t } = useLingui();
   const dateLocale = useDateLocale();
@@ -201,4 +203,8 @@ export default function MeetingCalendarScreen() {
       )}
     </ScrollView>
   );
+}
+
+export default function MeetingCalendarScreenRoute() {
+  return sparkScreen(showMeetings(), <MeetingCalendarScreen />);
 }

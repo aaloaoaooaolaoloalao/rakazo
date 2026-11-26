@@ -13,6 +13,7 @@ import {
   tokenFromAuthResponse,
 } from "../api/session";
 import { authResponseErrorText, errorText, sessionSaveErrorText } from "../api/user-error";
+import { showPasskeys } from "../spark/product";
 import { passwordResetCapabilities } from "./api-auth";
 
 export type MobilePasskey = { id: string; name: string | null; createdAt: string };
@@ -50,6 +51,7 @@ function serverMatchesRp(apiBase: string, rpId: string | undefined | null): bool
 export async function passkeysAvailable(
   capabilities: Pick<AuthCapabilities, "passkeyRpId" | "nativePasskeys"> | null | undefined,
 ): Promise<boolean> {
+  if (!showPasskeys()) return false;
   const rpId = capabilities?.passkeyRpId;
   if (!serverMatchesRp(currentApiBase(), rpId)) return false;
   const platform = Platform.OS === "ios" ? "ios" : Platform.OS === "android" ? "android" : null;

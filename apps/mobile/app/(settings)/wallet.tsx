@@ -16,12 +16,14 @@ import { openExternalUrl } from "../../lib/platform/open-url";
 import { accountRpcQuery, formRead, queryClient, useSave } from "../../lib/query/query";
 import { useScreenQuery } from "../../lib/query/screen-query";
 import { ACCOUNT_SETTINGS } from "../../lib/query/settings-target";
+import { showWallet } from "../../lib/spark/product";
+import { sparkScreen } from "../../lib/spark/spark-screen";
 
 /** How often an open sign-in asks whether the provider finished it. */
 export const WALLET_POLL_MS = 3_000;
 
 /** Connects the wallet the user's bots spend from. */
-export default function WalletSettings() {
+function WalletSettings() {
   const { t } = useLingui();
   const sideInsets = useSideInsets();
   const stacked = useStackedSettings();
@@ -136,3 +138,7 @@ const styles = StyleSheet.create({
   content: { paddingHorizontal: 16, paddingTop: 16, paddingBottom: 32 },
   compactContent: { paddingHorizontal: 8 },
 });
+
+export default function WalletSettingsRoute() {
+  return sparkScreen(showWallet(), <WalletSettings />);
+}

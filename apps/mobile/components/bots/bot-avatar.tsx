@@ -39,8 +39,10 @@ import { useAvatarOnScreen, useLife, usePoke, useSettling } from "../../lib/bots
 import { mobileBotAvatarPresentation } from "../../lib/bots/bot-avatar";
 import { mobileLogoAvatarActivity } from "../../lib/bots/logo-avatar-activity";
 import { useMobileTokens } from "../../lib/native/native";
+import { sparkProductEnabled } from "../../lib/spark/product";
 import { NativeSymbol } from "../native/native-symbol";
 import { LogoAvatar } from "./logo-avatar";
+import { SparkBotAvatar } from "./spark-bot-avatar";
 
 const AnimatedRect = Animated.createAnimatedComponent(Rect);
 
@@ -132,6 +134,7 @@ export interface BotAvatarProps {
 
 /** Missing set metadata deliberately preserves every existing avatar. */
 export const BotAvatar = memo(function BotAvatar(props: BotAvatarProps) {
+  if (sparkProductEnabled()) return <SparkBotAvatar {...props} />;
   if (usesLogoAvatar(props)) {
     return <RakazoBotAvatar {...props} />;
   }

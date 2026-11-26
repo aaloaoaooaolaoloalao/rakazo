@@ -68,6 +68,7 @@ import { createQueuedSave } from "../../lib/query/queued-save";
 import { useScreenQuery } from "../../lib/query/screen-query";
 import { ACCOUNT_SETTINGS } from "../../lib/query/settings-target";
 import { createSettingsPageStyles } from "../../lib/settings/settings-page-styles";
+import { showModelSettings } from "../../lib/spark/product";
 
 let hapticsSaveVersion = 0;
 
@@ -356,15 +357,17 @@ export default function General() {
               else void setResponseStreamingPreference(checked ? "on" : "off");
             }}
           />
-          <SettingsSwitch
-            label={t`Model picker in chat`}
-            value={me?.chatPreferences?.composerModelPicker ?? deviceModelPicker}
-            disabled={chatSaveDisabled}
-            onChange={(checked) => {
-              if (me?.chatPreferences) chatSave.run({ composerModelPicker: checked });
-              else void setComposerModelPicker(checked);
-            }}
-          />
+          {showModelSettings() ? (
+            <SettingsSwitch
+              label={t`Model picker in chat`}
+              value={me?.chatPreferences?.composerModelPicker ?? deviceModelPicker}
+              disabled={chatSaveDisabled}
+              onChange={(checked) => {
+                if (me?.chatPreferences) chatSave.run({ composerModelPicker: checked });
+                else void setComposerModelPicker(checked);
+              }}
+            />
+          ) : null}
           {supportsComposerHardwareEnter ? (
             <SettingsSwitch
               label={t`Send with Enter`}

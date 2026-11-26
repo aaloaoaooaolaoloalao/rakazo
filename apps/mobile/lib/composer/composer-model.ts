@@ -8,6 +8,7 @@ import { useSyncExternalStore } from "react";
 import type { MobileMe, MobileModel, MobileModelCredential } from "../api/mobile-types";
 import { rpcQuery } from "../query/query";
 import { useScreenQuery } from "../query/screen-query";
+import { showModelSettings } from "../spark/product";
 import {
   getCachedComposerModelPicker,
   subscribeComposerModelPicker,
@@ -39,7 +40,7 @@ export function useComposerModel(
     () => false,
   );
   const on = me?.chatPreferences?.composerModelPicker ?? deviceModelPicker;
-  const enabled = on && Boolean(botId);
+  const enabled = on && Boolean(botId) && showModelSettings();
   const read = { enabled };
   const bot = useScreenQuery(rpcQuery("bots/get", { botId: botId ?? "" }), read).data;
   const catalog = useScreenQuery(rpcQuery("models/list"), read).data;

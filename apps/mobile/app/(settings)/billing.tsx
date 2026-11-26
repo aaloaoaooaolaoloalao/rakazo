@@ -35,8 +35,10 @@ import { formRead, queryClient, rpcQuery, useSave } from "../../lib/query/query"
 import { useScreenQuery } from "../../lib/query/screen-query";
 import type { SettingsTarget } from "../../lib/query/settings-target";
 import { openFromSettingsSheet } from "../../lib/settings/settings-sheet";
+import { showBilling } from "../../lib/spark/product";
+import { sparkScreen } from "../../lib/spark/spark-screen";
 
-export default function BillingScreen() {
+function BillingScreen() {
   const sideInsets = useSideInsets();
   const stacked = useStackedSettings();
   const { t } = useLingui();
@@ -432,3 +434,7 @@ const styles = StyleSheet.create({
   content: { paddingHorizontal: 16, paddingTop: 16, paddingBottom: 32, gap: 28 },
   compactContent: { paddingHorizontal: 8 },
 });
+
+export default function BillingScreenRoute() {
+  return sparkScreen(showBilling(), <BillingScreen />);
+}

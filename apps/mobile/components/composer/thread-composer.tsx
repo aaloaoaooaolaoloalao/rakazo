@@ -48,6 +48,7 @@ import { readComposerDraft, writeComposerDraft } from "../../lib/composer/compos
 import { useComposerHardwareEnterPreference } from "../../lib/composer/composer-enter-to-send-preference";
 import type { ComposerModel } from "../../lib/composer/composer-model";
 import { useMobileTokens, useResolvedAppearance } from "../../lib/native/native";
+import { showVoiceSettings } from "../../lib/spark/product";
 import type { ComposerSnapshot } from "../../lib/thread/send/thread-feedback";
 import { GlassSurface } from "../native/glass-surface";
 import { NativeSymbol } from "../native/native-symbol";
@@ -909,7 +910,7 @@ export function ThreadComposer({
                   style={{ marginBottom: pillInset }}
                 />
               ) : null}
-              {onCall ? null : (
+              {onCall || !showVoiceSettings() ? null : (
                 <Pressable
                   accessibilityRole="button"
                   accessibilityLabel={t`Dictate`}
@@ -927,7 +928,7 @@ export function ThreadComposer({
                   </View>
                 </Pressable>
               )}
-              {!canSend && botId && !onCall ? (
+              {!canSend && botId && !onCall && showVoiceSettings() ? (
                 <Pressable
                   accessibilityRole="button"
                   accessibilityLabel={t`Call`}
