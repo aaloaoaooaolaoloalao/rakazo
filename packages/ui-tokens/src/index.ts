@@ -514,3 +514,4 @@ export function renderTokensCss(): string {
 }
 
 export { PRODUCT_UI } from "./product-ui.js";
+export { applySparkMobileTokens, sparkDarkAccent, sparkLightAccent } from "./spark-overlay.js";

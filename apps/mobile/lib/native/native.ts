@@ -1,10 +1,10 @@
-import { tokensForAppearance } from "@rakazo/ui-tokens";
 import { useMemo, useSyncExternalStore } from "react";
 import type { ColorValue } from "react-native";
 import { Platform, PlatformColor } from "react-native";
 import type { ResolvedAppearance } from "../appearance/appearance";
 import {
   getCachedAppearancePreference,
+  mobilePalette,
   mobileTokens,
   resolveMobileAppearance,
   subscribeAppearance,
@@ -88,5 +88,5 @@ export function useThemedStyles<T>(factory: () => T): T {
 
 /** Subscribe custom surfaces to the same appearance as native navigation. */
 export function useMobileTokens() {
-  return tokensForAppearance(useResolvedAppearance());
+  return mobilePalette(useResolvedAppearance());
 }
