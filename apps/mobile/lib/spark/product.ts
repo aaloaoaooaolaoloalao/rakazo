@@ -1,5 +1,5 @@
 import { PRODUCT_UI } from "@rakazo/ui-tokens";
-import { sparkEnvEnabled } from "./brand";
+import { sparkEnvEnabled } from "./brand.js";
 
 /**
  * True when this JS bundle was built for SparkAI.

@@ -1,11 +1,12 @@
-import type { ExpoConfig } from "expo/config";
-
 /**
  * SparkAI mobile brand overlay.
  *
  * Applied only when `SPARK` or `EXPO_PUBLIC_SPARK` is `1` / `true`. Otherwise
  * `applySparkBrand` returns the same config object so upstream Rakazo builds
  * stay byte-for-byte on this path.
+ *
+ * This overlay is CommonJS on purpose. Expo compiles only `app.config.ts`; a
+ * nested TypeScript import is not loaded. `brand.d.ts` types the same exports.
  *
  * Defaults (each overridable by the matching env var):
  * - name: SparkAI (`SPARK_APP_NAME`)
@@ -38,9 +39,9 @@ const DEFAULT_TEAM_ID = "WNAP7G2A58";
 const SPARK_ICON = "../../apps/web/public/icon-512.png";
 const SPARK_SPLASH_BACKGROUND = "#ECEAE2";
 /** Not a real Expo project. Set `SPARK_EAS_PROJECT_ID` before an EAS build. */
-export const SPARK_EAS_PROJECT_PLACEHOLDER = "spark-eas-project-id";
+const SPARK_EAS_PROJECT_PLACEHOLDER = "spark-eas-project-id";
 /** Not a real Expo account. Set `SPARK_EXPO_OWNER` before an EAS build. */
-export const SPARK_EXPO_OWNER_PLACEHOLDER = "spark-eas-owner";
+const SPARK_EXPO_OWNER_PLACEHOLDER = "spark-eas-owner";
 const UPSTREAM_EXPO_PROJECT_ID = "07f7eb04-45e3-47fe-9374-99a2f991131e";
 
 const PERMISSION_KEYS = new Set([
@@ -53,14 +54,11 @@ const PERMISSION_KEYS = new Set([
   "remindersPermission",
 ]);
 
-export function sparkEnvEnabled(env: Record<string, string | undefined> = process.env): boolean {
+function sparkEnvEnabled(env = process.env) {
   return truthy(env.SPARK) || truthy(env.EXPO_PUBLIC_SPARK);
 }
 
-export function applySparkBrand(
-  config: ExpoConfig,
-  env: Record<string, string | undefined> = process.env,
-): ExpoConfig {
+function applySparkBrand(config, env = process.env) {
   if (!sparkEnvEnabled(env)) return config;
 
   const name = readEnv(env, "SPARK_APP_NAME") ?? "SparkAI";
@@ -85,7 +83,7 @@ export function applySparkBrand(
   const { icon: _upstreamIcon, ...iosRest } = config.ios ?? {};
   const infoPlist = renamePlist(iosRest.infoPlist, name);
 
-  let next: ExpoConfig = {
+  let next = {
     ...config,
     name,
     owner,
@@ -137,16 +135,7 @@ export function applySparkBrand(
   return next;
 }
 
-function rewriteEas(
-  eas: unknown,
-  ids: {
-    previousBundleId: string | undefined;
-    bundleId: string;
-    appGroup: string;
-    notificationBundleId: string;
-    projectId: string;
-  },
-): Record<string, unknown> {
+function rewriteEas(eas, ids) {
   const record = asRecord(eas) ?? {};
   const build = asRecord(record.build);
   const experimental = asRecord(build?.experimental);
@@ -182,15 +171,7 @@ function rewriteEas(
   };
 }
 
-function rewriteExtension(
-  entry: unknown,
-  ids: {
-    previousBundleId: string | undefined;
-    bundleId: string;
-    appGroup: string;
-    notificationBundleId: string;
-  },
-): unknown {
+function rewriteExtension(entry, ids) {
   const ext = asRecord(entry);
   if (!ext) return entry;
   const bundleIdentifier =
@@ -219,14 +200,7 @@ function rewriteExtension(
   };
 }
 
-function nextExtensionId(
-  bundleIdentifier: string,
-  ids: {
-    previousBundleId: string | undefined;
-    bundleId: string;
-    notificationBundleId: string;
-  },
-): string {
+function nextExtensionId(bundleIdentifier, ids) {
   const previous = ids.previousBundleId;
   const isNotification =
     bundleIdentifier.endsWith(".notifications") ||
@@ -238,17 +212,13 @@ function nextExtensionId(
   return bundleIdentifier;
 }
 
-function renamePlugins(
-  plugins: ExpoConfig["plugins"],
-  name: string,
-  appGroup: string,
-): ExpoConfig["plugins"] {
+function renamePlugins(plugins, name, appGroup) {
   if (!plugins) return plugins;
   return plugins.map((plugin) => {
     if (!Array.isArray(plugin)) return plugin;
     const [id, options] = plugin;
     if (!options || typeof options !== "object") return plugin;
-    const next = renamePermissionTree(options, name) as Record<string, unknown>;
+    const next = renamePermissionTree(options, name);
     if (id === "expo-sharing") {
       const ios = asRecord(next.ios) ?? {};
       next.ios = { ...ios, appGroupId: appGroup };
@@ -259,15 +229,15 @@ function renamePlugins(
       const dark = asRecord(next.dark);
       if (dark) next.dark = { ...dark, backgroundColor: SPARK_SPLASH_BACKGROUND };
     }
-    return [id, next] as [string, Record<string, unknown>];
+    return [id, next];
   });
 }
 
-function renamePermissionTree(value: unknown, name: string): unknown {
+function renamePermissionTree(value, name) {
   if (Array.isArray(value)) return value.map((entry) => renamePermissionTree(entry, name));
   if (!value || typeof value !== "object") return value;
-  const out: Record<string, unknown> = {};
-  for (const [key, child] of Object.entries(value as Record<string, unknown>)) {
+  const out = {};
+  for (const [key, child] of Object.entries(value)) {
     out[key] =
       typeof child === "string" && PERMISSION_KEYS.has(key)
         ? child.replaceAll("Rakazo", name)
@@ -276,35 +246,35 @@ function renamePermissionTree(value: unknown, name: string): unknown {
   return out;
 }
 
-function renamePlist(plist: unknown, name: string): Record<string, unknown> | undefined {
+function renamePlist(plist, name) {
   const record = asRecord(plist);
   if (!record) return undefined;
-  const out: Record<string, unknown> = {};
+  const out = {};
   for (const [key, value] of Object.entries(record)) {
     out[key] = typeof value === "string" ? value.replaceAll("Rakazo", name) : value;
   }
   return out;
 }
 
-function detachUpdates(config: ExpoConfig): ExpoConfig {
+function detachUpdates(config) {
   if (!config.updates) return { ...config, updates: { enabled: false } };
   const { url: _url, ...rest } = config.updates;
   return { ...config, updates: { ...rest, enabled: false } };
 }
 
-function pointUpdates(config: ExpoConfig, projectId: string): ExpoConfig {
+function pointUpdates(config, projectId) {
   return {
     ...config,
     updates: { ...config.updates, enabled: true, url: `https://u.expo.dev/${projectId}` },
   };
 }
 
-function atLeastVersion(version: string | undefined, floor: string): string {
+function atLeastVersion(version, floor) {
   const current = version?.trim() || floor;
   return compareVersions(current, floor) >= 0 ? current : floor;
 }
 
-function compareVersions(left: string, right: string): number {
+function compareVersions(left, right) {
   const a = left.split(".").map((part) => Number(part) || 0);
   const b = right.split(".").map((part) => Number(part) || 0);
   const length = Math.max(a.length, b.length);
@@ -315,7 +285,7 @@ function compareVersions(left: string, right: string): number {
   return 0;
 }
 
-function atLeastInt(value: string | number | undefined, floor: number): number {
+function atLeastInt(value, floor) {
   const parsed = typeof value === "number" ? value : Number(value);
   if (!Number.isFinite(parsed) || parsed < 1) {
     throw new Error(`SparkAI build number must be a positive integer (got ${String(value)}).`);
@@ -323,22 +293,27 @@ function atLeastInt(value: string | number | undefined, floor: number): number {
   return Math.max(Math.trunc(parsed), floor);
 }
 
-function truthy(value: string | undefined): boolean {
+function truthy(value) {
   const normalized = value?.trim().toLowerCase();
   return normalized === "1" || normalized === "true" || normalized === "yes";
 }
 
-function readEnv(env: Record<string, string | undefined>, name: string): string | undefined {
+function readEnv(env, name) {
   const value = env[name]?.trim();
   return value || undefined;
 }
 
-function asRecord(value: unknown): Record<string, unknown> | undefined {
-  return value && typeof value === "object" && !Array.isArray(value)
-    ? (value as Record<string, unknown>)
-    : undefined;
+function asRecord(value) {
+  return value && typeof value === "object" && !Array.isArray(value) ? value : undefined;
 }
 
-function jsonContains(value: unknown, needle: string): boolean {
+function jsonContains(value, needle) {
   return JSON.stringify(value).includes(needle);
 }
+
+module.exports = {
+  SPARK_EAS_PROJECT_PLACEHOLDER,
+  SPARK_EXPO_OWNER_PLACEHOLDER,
+  applySparkBrand,
+  sparkEnvEnabled,
+};

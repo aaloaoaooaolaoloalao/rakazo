@@ -6,7 +6,7 @@ import {
   SPARK_EAS_PROJECT_PLACEHOLDER,
   SPARK_EXPO_OWNER_PLACEHOLDER,
   sparkEnvEnabled,
-} from "./brand";
+} from "./brand.js";
 
 afterEach(() => {
   vi.unstubAllEnvs();

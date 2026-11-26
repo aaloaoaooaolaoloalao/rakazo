@@ -1,5 +1,5 @@
 import type { ConfigContext, ExpoConfig } from "expo/config";
-import { applySparkBrand, sparkEnvEnabled } from "./lib/spark/brand";
+import { applySparkBrand, sparkEnvEnabled } from "./lib/spark/brand.js";
 
 const RELEASE_PROFILES = new Set(["production", "android-apk", "diagnostic", "spark-production"]);
 const BUNDLE_ID = /^[A-Za-z0-9-]+(\.[A-Za-z0-9-]+)+$/;
