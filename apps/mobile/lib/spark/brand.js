@@ -19,9 +19,11 @@
  * - Android package: com.alonshelly.sparkai (`SPARK_ANDROID_PACKAGE`)
  * - iOS buildNumber and Android versionCode: at least 10
  *   (`SPARK_IOS_BUILD_NUMBER`, `SPARK_ANDROID_VERSION_CODE`; lower values are raised to 10)
- * - EAS project id / owner: `SPARK_EAS_PROJECT_ID` and `SPARK_EXPO_OWNER`.
- *   When unset, a placeholder is written and upstream's Expo project is detached.
- *   Do not reuse Rakazo's project id.
+ * - slug: sparkai- (`SPARK_SLUG`; the trailing dash is part of the Expo project slug)
+ * - EAS project id: ee5459ca-1aee-469a-bfb6-cd1155216e1f (`SPARK_EAS_PROJECT_ID`)
+ * - EAS owner: alolololololols-team (`SPARK_EXPO_OWNER`)
+ * - EAS updates: on, at https://u.expo.dev/<project id>
+ *   Do not reuse Rakazo's project id. The old placeholder still detaches updates.
  * - URL scheme stays `rakazo`.
  *
  * `RAKAZO_IOS_BUNDLE_ID`, `RAKAZO_APPLE_TEAM_ID`, `RAKAZO_EXPO_PROJECT_ID`, and
@@ -38,10 +40,12 @@ const DEFAULT_BUNDLE_ID = "com.alonshelly.sparkai";
 const DEFAULT_TEAM_ID = "WNAP7G2A58";
 const SPARK_ICON = "../../apps/web/public/icon-512.png";
 const SPARK_SPLASH_BACKGROUND = "#ECEAE2";
-/** Not a real Expo project. Set `SPARK_EAS_PROJECT_ID` before an EAS build. */
+/** Expo project slug. The trailing dash is intentional and must match the project. */
+const SPARK_SLUG = "sparkai-";
+const SPARK_EAS_PROJECT_ID = "ee5459ca-1aee-469a-bfb6-cd1155216e1f";
+const SPARK_EXPO_OWNER = "alolololololols-team";
+/** Setting the project id to this still detaches updates instead of publishing. */
 const SPARK_EAS_PROJECT_PLACEHOLDER = "spark-eas-project-id";
-/** Not a real Expo account. Set `SPARK_EXPO_OWNER` before an EAS build. */
-const SPARK_EXPO_OWNER_PLACEHOLDER = "spark-eas-owner";
 const UPSTREAM_EXPO_PROJECT_ID = "07f7eb04-45e3-47fe-9374-99a2f991131e";
 
 const PERMISSION_KEYS = new Set([
@@ -76,8 +80,9 @@ function applySparkBrand(config, env = process.env) {
     readEnv(env, "SPARK_ANDROID_VERSION_CODE") ?? config.android?.versionCode,
     MIN_BUILD,
   );
-  const projectId = readEnv(env, "SPARK_EAS_PROJECT_ID") ?? SPARK_EAS_PROJECT_PLACEHOLDER;
-  const owner = readEnv(env, "SPARK_EXPO_OWNER") ?? SPARK_EXPO_OWNER_PLACEHOLDER;
+  const slug = readEnv(env, "SPARK_SLUG") ?? SPARK_SLUG;
+  const projectId = readEnv(env, "SPARK_EAS_PROJECT_ID") ?? SPARK_EAS_PROJECT_ID;
+  const owner = readEnv(env, "SPARK_EXPO_OWNER") ?? SPARK_EXPO_OWNER;
   const previousBundleId = config.ios?.bundleIdentifier;
 
   const { icon: _upstreamIcon, ...iosRest } = config.ios ?? {};
@@ -86,6 +91,7 @@ function applySparkBrand(config, env = process.env) {
   let next = {
     ...config,
     name,
+    slug,
     owner,
     version,
     // The scheme is hardcoded across links, share extensions, and auth callbacks.
@@ -326,8 +332,10 @@ function jsonContains(value, needle) {
 }
 
 module.exports = {
+  SPARK_EAS_PROJECT_ID,
   SPARK_EAS_PROJECT_PLACEHOLDER,
-  SPARK_EXPO_OWNER_PLACEHOLDER,
+  SPARK_EXPO_OWNER,
+  SPARK_SLUG,
   applySparkBrand,
   sparkEnvEnabled,
 };
