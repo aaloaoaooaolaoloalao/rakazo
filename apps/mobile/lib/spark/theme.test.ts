@@ -1,4 +1,3 @@
-import { sparkDarkAccent } from "@rakazo/ui-tokens";
 import { afterEach, describe, expect, it, vi } from "vitest";
 
 vi.mock("expo-secure-store", () => ({
@@ -21,17 +20,19 @@ afterEach(() => {
 });
 
 describe("Spark theme on mobile", () => {
-  it("keeps the upstream palette until the Spark flag is on", async () => {
+  it("uses the upstream palette when the Spark flag is off", async () => {
     vi.stubEnv("SPARK", undefined);
     vi.stubEnv("EXPO_PUBLIC_SPARK", undefined);
     const { darkTokens } = await import("@rakazo/ui-tokens");
     expect(mobileTokens()).toBe(darkTokens);
   });
 
-  it("applies the Spark web accent when the flag is on", () => {
+  it("keeps the upstream palette when the Spark flag is on", async () => {
     vi.stubEnv("EXPO_PUBLIC_SPARK", "1");
-    expect(mobileTokens().link).toBe(sparkDarkAccent.link);
-    expect(mobileTokens().ring).toBe(sparkDarkAccent.ring);
-    expect(mobileTokens().primary).toBe("#FFFFFF");
+    const { darkTokens } = await import("@rakazo/ui-tokens");
+    expect(mobileTokens()).toBe(darkTokens);
+    expect(mobileTokens().primary).toBe(darkTokens.primary);
+    expect(mobileTokens().link).toBe(darkTokens.link);
+    expect(mobileTokens().ring).toBe(darkTokens.ring);
   });
 });

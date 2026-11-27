@@ -17,6 +17,7 @@ import type { CallPhase } from "../../lib/calls/call-session";
 import { hangUp, toggleMute, toggleTranscript, useCallSession } from "../../lib/calls/call-session";
 import { useMobileTokens } from "../../lib/native/native";
 import { accountRpcQuery, queryClient } from "../../lib/query/query";
+import { showVoiceSettings } from "../../lib/spark/product";
 import { getVoicePlaybackState, subscribeVoicePlayback } from "../../lib/voice/voice";
 import { BotAvatar } from "../bots/bot-avatar";
 import { GlassIconButton } from "../native/glass-icon-button";
@@ -146,14 +147,16 @@ export function CallCard() {
         </View>
       </View>
       <View style={styles.actions}>
-        <RoundButton
-          label={t`Settings`}
-          ios="gearshape"
-          android="settings-outline"
-          color={tokens.foreground}
-          border={tokens.border}
-          onPress={() => router.push("/voice")}
-        />
+        {showVoiceSettings() ? (
+          <RoundButton
+            label={t`Settings`}
+            ios="gearshape"
+            android="settings-outline"
+            color={tokens.foreground}
+            border={tokens.border}
+            onPress={() => router.push("/voice")}
+          />
+        ) : null}
         <RoundButton
           label={t`Transcript`}
           ios="captions.bubble"

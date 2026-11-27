@@ -27,6 +27,7 @@ import { cancelFocusPrompt } from "../../notifications/focus-prompt";
 import { resumeLiveNotifications } from "../../notifications/live-notifications";
 import { startWorkActivity } from "../../notifications/work-activity";
 import { takePageReply } from "../../pages/pages";
+import { showBilling } from "../../spark/product";
 import type { ThreadListScroll } from "../scroll/thread-list-scroll";
 import { answerThreadMessage } from "../thread-answer";
 import type { ThreadHistory } from "../thread-history";
@@ -130,7 +131,7 @@ export function useThreadSend({
     }
     router.push({
       pathname: "/account",
-      params: action === "settings-usage" ? { focus: "usage" } : undefined,
+      params: action === "settings-usage" && showBilling() ? { focus: "usage" } : undefined,
     });
   }
 

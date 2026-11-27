@@ -28,6 +28,7 @@ import {
   resolveVoiceCallPlan,
 } from "../calls/voice-call-entry";
 import { onShortcutVoiceChat, takeShortcutVoiceChat } from "../calls/voice-chat-intent";
+import { showVoiceSettings } from "../spark/product";
 import { nextAutoSpeakAction } from "../voice/auto-speak";
 import { loadDeviceVoiceEnabled } from "../voice/device-voice";
 import { available as dictationAvailable } from "../voice/dictation";
@@ -60,7 +61,7 @@ export function useAutoSpeakReply({
   const autoSpokenBotId = useRef<string | null>(null);
 
   const speakFinishedReply = useCallback(() => {
-    if (!botId || inGroup || !currentBot) return;
+    if (!showVoiceSettings() || !botId || inGroup || !currentBot) return;
     const decision = nextAutoSpeakAction({
       botId: currentBot.id,
       autoSpeak: currentBot.autoSpeak,
@@ -131,6 +132,7 @@ export function useSpeakMessages({
   const router = useRouter();
   return useCallback(
     (message: MobileMessage) => {
+      if (!showVoiceSettings()) return;
       // An active call owns the speaker; a manual read must not cut into it.
       if (getCallSnapshot()) return;
       const startIndex = visibleMessages.findIndex((candidate) => candidate.id === message.id);
@@ -155,7 +157,7 @@ export function useSpeakMessages({
       if (items.length === 0) return;
       void speakQueue(items)
         .then((spoken) => {
-          if (!spoken)
+          if (!spoken && showVoiceSettings())
             Alert.alert(t`Could not speak`, t`Add a voice provider in Voice settings.`, [
               { text: t`Cancel`, style: "cancel" },
               { text: t`Open Voice`, onPress: () => router.push("/voice") },
@@ -207,7 +209,7 @@ export function useThreadVoiceCall({
    * sign-in to another account meanwhile must not start this account's call with the new session.
    */
   async function startVoiceCall(switchedHere = false, setupSession = currentSessionGeneration()) {
-    if (readOnly) return;
+    if (!showVoiceSettings() || readOnly) return;
     const targetBotId = botId;
     if (!targetBotId || voiceCallStarting.current) return;
     voiceCallStarting.current = true;
