@@ -1,5 +1,5 @@
 import { notificationAvatarSource } from "@rakazo/core";
-import { expect, it, vi } from "vitest";
+import { afterEach, describe, expect, it, vi } from "vitest";
 import { notificationIdentity } from "./notification-identity.js";
 
 /** Installed iOS and Android apps drop an avatar over 1400 base64 characters. */
@@ -111,6 +111,54 @@ it("uses a saved profile picture, with no external avatar fetch", async () => {
   expect(
     notificationAvatarSource({ id: "bot", color: "https://untrusted.example/avatar.png" }),
   ).toMatch(/^data:image\/svg\+xml,/);
+});
+
+describe("Spark notification avatars", () => {
+  afterEach(() => {
+    vi.unstubAllEnvs();
+  });
+
+  it("renders Spark dots when SPARK is on", async () => {
+    vi.stubEnv("SPARK", "1");
+    const color = "#1084FE::shape_5";
+    const identity = await notificationIdentity({
+      id: "spark-bot",
+      name: "Spark",
+      color,
+    });
+    expect(identity.avatar).toBeTruthy();
+    const { default: sharp } = await import("sharp");
+    const bytes = Buffer.from(identity.avatar!, "base64");
+    const raster = await sharp(bytes).raw().ensureAlpha().toBuffer({ resolveWithObject: true });
+    const { data, info } = raster;
+    let painted = 0;
+    for (let i = 0; i < data.length; i += info.channels) {
+      if (data[i]! < 250 || data[i + 1]! < 250 || data[i + 2]! < 250) painted += 1;
+    }
+    expect(painted).toBeGreaterThan(100);
+    const rakazo = await notificationIdentity({
+      id: "spark-off",
+      name: "Rakazo",
+      color: "#8B5CF6::shape_3",
+    });
+    expect(rakazo.avatar).toBeTruthy();
+  });
+
+  it("keeps Rakazo silhouettes when SPARK is off", async () => {
+    vi.stubEnv("SPARK", undefined);
+    const off = decodeURIComponent(
+      notificationAvatarSource({ id: "agent-1", color: "#8B5CF6::shape_3" }).slice(
+        "data:image/svg+xml,".length,
+      ),
+    );
+    expect(off).toContain("<path");
+    const identity = await notificationIdentity({
+      id: "agent-1",
+      name: "Marketing",
+      color: "#8B5CF6::shape_3",
+    });
+    expect(identity.avatar).toBeTruthy();
+  });
 });
 
 it("shares one render per avatar and does not retry a broken one", async () => {
