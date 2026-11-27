@@ -48,7 +48,7 @@ import { readComposerDraft, writeComposerDraft } from "../../lib/composer/compos
 import { useComposerHardwareEnterPreference } from "../../lib/composer/composer-enter-to-send-preference";
 import type { ComposerModel } from "../../lib/composer/composer-model";
 import { useMobileTokens, useResolvedAppearance } from "../../lib/native/native";
-import { showVoiceSettings } from "../../lib/spark/product";
+import { showBilling, showVoiceSettings } from "../../lib/spark/product";
 import type { ComposerSnapshot } from "../../lib/thread/send/thread-feedback";
 import { GlassSurface } from "../native/glass-surface";
 import { NativeSymbol } from "../native/native-symbol";
@@ -310,10 +310,14 @@ export function ThreadComposer({
         return t`Settings: Usage`;
     }
   }
-  const { skills: slashSkillOptions, actions: slashActionOptions } =
+  const slashOptions =
     slashQuery !== null && mentionQuery === null
       ? composerSlashOptions(slashQuery, agentSkills, (action) => slashActionLabel(action.id))
       : { skills: [], actions: [] };
+  const slashSkillOptions = slashOptions.skills;
+  const slashActionOptions = slashOptions.actions.filter(
+    (action) => action.id !== "settings-usage" || showBilling(),
+  );
   const pickerScroll = useRef<ScrollViewInstance>(null);
   const pickerRowOffsets = useRef<number[]>([]);
   const [pickerIndex, setPickerIndex] = useState<number | null>(null);

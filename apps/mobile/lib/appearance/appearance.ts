@@ -1,6 +1,5 @@
 import type { AppearancePreference, ResolvedAppearance } from "@rakazo/ui-tokens";
 import {
-  applySparkMobileTokens,
   normalizeAppearancePreference,
   resolveAppearance,
   tokensForAppearance,
@@ -9,7 +8,6 @@ import {
 import * as SecureStore from "expo-secure-store";
 import type { ColorSchemeName } from "react-native";
 import { Appearance } from "react-native";
-import { sparkProductEnabled } from "../spark/product";
 
 export type { AppearancePreference, ResolvedAppearance };
 
@@ -56,8 +54,7 @@ export function resolveMobileAppearance(
 }
 
 export function mobilePalette(appearance: ResolvedAppearance) {
-  const base = tokensForAppearance(appearance);
-  return sparkProductEnabled() ? applySparkMobileTokens(base, appearance) : base;
+  return tokensForAppearance(appearance);
 }
 
 export function mobileTokens(

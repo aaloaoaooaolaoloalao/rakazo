@@ -1,3 +1,4 @@
+import { readFileSync } from "node:fs";
 import { afterEach, describe, expect, it, vi } from "vitest";
 import {
   showAppleWatch,
@@ -36,6 +37,16 @@ describe("Spark product surface", () => {
     expect(showSignupSurvey()).toBe(true);
     expect(showMeetings()).toBe(true);
     expect(showOrganizations()).toBe(true);
+  });
+
+  it("reads the public flag Metro inlines, and ignores SPARK alone", () => {
+    const source = readFileSync(new URL("./product.ts", import.meta.url), "utf8");
+    expect(source).toContain("process.env.EXPO_PUBLIC_SPARK");
+    vi.stubEnv("SPARK", "1");
+    vi.stubEnv("EXPO_PUBLIC_SPARK", undefined);
+    expect(sparkProductEnabled()).toBe(false);
+    expect(showModelSettings()).toBe(true);
+    expect(showBilling()).toBe(true);
   });
 
   it("hides the Spark extras when the Spark flag is on", () => {

@@ -116,18 +116,42 @@ describe("settings links", () => {
     expect(isSettingsLink("rakazo:///accounts")).toBe(false);
   });
 
-  it("sends a hidden Spark screen home", () => {
+  it("sends a hidden Spark screen home and leaves kept screens open", () => {
     vi.stubEnv("EXPO_PUBLIC_SPARK", "1");
-    expect(redirectSystemPath({ path: "rakazo:///billing", initial: false })).toBe("/");
-    expect(redirectSystemPath({ path: "rakazo:///spaces", initial: false })).toBe("/");
-    expect(redirectSystemPath({ path: "rakazo:///labs", initial: false })).toBe("/");
-    expect(redirectSystemPath({ path: "rakazo:///signup-survey", initial: false })).toBe("/");
-    expect(redirectSystemPath({ path: "/meetings", initial: false })).toBe("/");
-    expect(redirectSystemPath({ path: "rakazo:///skills", initial: false })).toBe(
-      "rakazo:///skills",
-    );
-    expect(isSettingsLink("/vault")).toBe(true);
-    expect(isSettingsLink("/billing")).toBe(false);
+    const hidden = [
+      "/billing",
+      "/wallet",
+      "/spending-limit",
+      "/paywall",
+      "/labs",
+      "/signup-survey",
+      "/models",
+      "/model-settings",
+      "/voice",
+      "/meetings",
+      "/meeting-calendar",
+      "/meeting-transcript",
+      "/organization",
+      "/organization-members",
+      "/spaces",
+      "/space",
+      "/new-organization",
+      "/new-space",
+      "/space-members",
+      "/board",
+      "/bot-model",
+      "/chat-model",
+    ];
+    for (const path of hidden) {
+      expect(redirectSystemPath({ path, initial: false }), path).toBe("/");
+      expect(isSettingsLink(path), path).toBe(false);
+    }
+    for (const path of ["/skills", "/memory", "/approvals", "/integrations", "/vault"]) {
+      expect(redirectSystemPath({ path, initial: false }), path).toBe(path);
+      expect(isSettingsLink(path), path).toBe(true);
+    }
+    expect(redirectSystemPath({ path: "/routines", initial: false })).toBe("/routines");
+    expect(redirectSystemPath({ path: "/computer", initial: false })).toBe("/computer");
   });
 
   it("closes the sheet before a link to another screen, and keeps settings links in it", () => {

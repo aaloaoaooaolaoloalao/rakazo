@@ -37,6 +37,7 @@ import { canSelectMessage } from "../../lib/messages/message-selection";
 import { selectableTextFromMarkdown } from "../../lib/messages/selectable-text";
 import type { UserBubble } from "../../lib/messages/user-bubble";
 import { useMobileTokens, useResolvedAppearance } from "../../lib/native/native";
+import { showVoiceSettings } from "../../lib/spark/product";
 import { previewMessageText } from "../../lib/thread/thread-message-text";
 import { ThreadReadOnlyContext } from "../../lib/thread/thread-read-only";
 import { BotAvatar } from "../bots/bot-avatar";
@@ -209,7 +210,8 @@ export const MessageRow = memo(function MessageRow({
       hasQuotableText(message.role, message.blocks);
     const includeReact = !readOnly && canReactToThreadMessage(message);
     // The call already reads replies aloud; a second voice would talk over it.
-    const includeSpeak = message.role === "bot" && !onCall && Boolean(blockText(message));
+    const includeSpeak =
+      showVoiceSettings() && message.role === "bot" && !onCall && Boolean(blockText(message));
     const includeSelect = messageText.trim().length > 0;
     const includeSelectMessages = canSelectMessage(message);
     // Any sent message can be marked unread; the next open starts New at the first reply from it.

@@ -13,6 +13,7 @@ import { currentSessionGeneration } from "../api/session";
 import { errorText } from "../api/user-error";
 import { resolveVoiceCallPlan } from "../calls/voice-call-entry";
 import { deviceLanguage, getActiveUiLocale } from "../i18n/i18n";
+import { showVoiceSettings } from "../spark/product";
 import { loadDeviceVoiceEnabled } from "../voice/device-voice";
 import * as dictation from "../voice/dictation";
 import { ensureVoiceConsent } from "../voice/voice";
@@ -155,6 +156,10 @@ export function useComposerDictation({
   }
 
   async function start(mine: Session) {
+    if (!showVoiceSettings()) {
+      end(mine);
+      return;
+    }
     const plan = await resolveVoiceCallPlan(
       {
         loadDeviceVoiceEnabled,
