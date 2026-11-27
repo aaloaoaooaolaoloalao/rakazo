@@ -1,5 +1,9 @@
 import { createHash } from "node:crypto";
-import { notificationAvatarSource } from "@rakazo/core";
+import {
+  notificationAvatarSource,
+  sparkNotificationAvatarSource,
+  sparkProductEnabled,
+} from "@rakazo/core";
 import { getLogger } from "@rakazo/logging";
 
 /** Installed apps drop an avatar over 1400 base64 characters, and Android one over 96px. */
@@ -17,7 +21,9 @@ type RenderedAvatar = { avatar: string | undefined; avatarLarge: string | undefi
 const avatars = new Map<string, { key: string; avatar: Promise<RenderedAvatar | undefined> }>();
 
 async function renderAvatar(bot: { id: string; color: string; avatarSet?: string | null }) {
-  const source = notificationAvatarSource(bot);
+  const source = sparkProductEnabled()
+    ? sparkNotificationAvatarSource(bot)
+    : notificationAvatarSource(bot);
   const comma = source.indexOf(",");
   const drawn = source.startsWith("data:image/svg+xml,");
   const bytes = drawn
