@@ -1,6 +1,13 @@
-
 // @vitest-environment jsdom
 
+const header = vi.hoisted(() => ({
+  action: null as null | { label: string; onPress: () => void; disabled?: boolean; busy?: boolean },
+}));
+vi.mock("../../navigation/screen-header", () => ({
+  useScreenHeader: ({ action }: { action?: typeof header.action }) => {
+    header.action = action ?? null;
+  },
+}));
 vi.mock("../../api/session", () => ({ currentSessionGeneration: () => 0 }));
 
 import type { Deferred } from "@rakazo/core/test-async";

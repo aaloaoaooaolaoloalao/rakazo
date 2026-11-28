@@ -21,6 +21,14 @@ const { rpc, back, push, replace } = vi.hoisted(() => ({
   push: vi.fn(),
   replace: vi.fn(),
 }));
+const header = vi.hoisted(() => ({
+  action: null as null | { label: string; onPress: () => void; disabled?: boolean; busy?: boolean },
+}));
+vi.mock("../navigation/screen-header", () => ({
+  useScreenHeader: ({ action }: { action?: typeof header.action }) => {
+    header.action = action ?? null;
+  },
+}));
 vi.mock("../layout/side-insets", () => ({ useSideInsets: () => ({}) }));
 vi.mock("../api/session", () => ({ currentSessionGeneration: () => 0 }));
 const space = vi.hoisted(() => ({ id: "space-a" }));
@@ -230,6 +238,11 @@ function switches() {
   return [...container.querySelectorAll<HTMLInputElement>('input[type="checkbox"]')];
 }
 async function click(label: string) {
+  if (label === "Save") {
+    expect(header.action?.label).toBe("Save");
+    await act(async () => header.action!.onPress());
+    return;
+  }
   const button = [...container.querySelectorAll("button")].find(
     (item) => item.textContent === label,
   );
@@ -436,7 +449,8 @@ it("shows refreshed members while collapsed and adopts an unedited server rename
   await act(async () => switches()[2]!.click());
   expect(switches()).toHaveLength(3);
   await act(async () => switches()[2]!.click());
-  await click("Save");
+  // Nothing differs from the group as read, so Save is not offered and nothing is written.
+  expect(header.action).toBeNull();
   expect(rpc.mock.calls.map(([procedure]) => procedure)).not.toContain("groups/update");
 });
 
@@ -450,7 +464,8 @@ it("does not overwrite a refreshed member order when saving", async () => {
         : [],
   );
   await act(async () => notifyArchivedChatsChanged());
-  await click("Save");
+  // Nothing differs from the group as read, so Save is not offered and nothing is written.
+  expect(header.action).toBeNull();
   expect(rpc.mock.calls.map(([procedure]) => procedure)).not.toContain("groups/update");
 });
 

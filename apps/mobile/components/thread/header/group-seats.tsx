@@ -12,7 +12,7 @@ import {
 import type { ReactNode } from "react";
 import { memo, useId } from "react";
 import type { ColorValue } from "react-native";
-import { View } from "react-native";
+import { Text, View } from "react-native";
 import Svg, {
   Circle,
   ClipPath,
@@ -34,6 +34,8 @@ import {
   groupSeatsWidth,
 } from "../../../lib/bots/group-seats";
 import { native, useMobileTokens, useResolvedAppearance } from "../../../lib/native/native";
+import { sparkProductEnabled } from "../../../lib/spark/product";
+import { SparkBotAvatar } from "../../bots/spark-bot-avatar";
 
 type SeatMember = { botId?: string; name?: string; color: string };
 
@@ -61,6 +63,8 @@ export const GroupSeats = memo(function GroupSeats({
   // Redraws the faint "+N" when the appearance changes.
   useResolvedAppearance();
   const page = useMobileTokens();
+  // SparkAI never draws the studio bodies: its members are halftone characters everywhere.
+  if (sparkProductEnabled()) return <SparkGroupSeats members={members} size={size} />;
   const seats = groupSeats(members);
   const step = groupSeatStep(size);
   const gap = groupSeatGap(size);
@@ -113,6 +117,56 @@ export const GroupSeats = memo(function GroupSeats({
     </View>
   );
 });
+
+/**
+ * SparkAI's row: each member's halftone character, overlapping like the seats above. The dots
+ * leave the one underneath showing through, so no outline is cut.
+ */
+function SparkGroupSeats({ members, size }: { members: readonly SeatMember[]; size: number }) {
+  const seats = groupSeats(members);
+  const step = groupSeatStep(size);
+  return (
+    <View
+      accessibilityElementsHidden
+      importantForAccessibility="no-hide-descendants"
+      pointerEvents="none"
+      style={{ width: groupSeatsWidth(seats.length, size), height: size }}
+    >
+      {seats.map((seat, index) => (
+        <View
+          key={index}
+          style={{
+            position: "absolute",
+            start: index * step,
+            top: 0,
+            width: size,
+            height: size,
+            alignItems: "center",
+            justifyContent: "center",
+          }}
+        >
+          {seat.kind === "member" ? (
+            <SparkBotAvatar
+              color={seat.member.color}
+              identity={seat.member.botId ?? seat.member.name}
+              size={size}
+            />
+          ) : (
+            <Text
+              style={{
+                color: native.systemTertiaryLabel,
+                fontSize: Math.round(size * (seat.kind === "more" ? 0.6 : 0.7)),
+                fontWeight: "600",
+              }}
+            >
+              {seat.kind === "more" ? `+${seat.count}` : "#"}
+            </Text>
+          )}
+        </View>
+      ))}
+    </View>
+  );
+}
 
 /** The "+N" for members past the row, or the group's "#" mark: ink, no disc. */
 function markArt(

@@ -451,24 +451,26 @@ function polar(cell: Cell, half: number): [number, number] {
   return [Math.atan2(dy, dx), Math.hypot(dx, dy)];
 }
 
-/** A stable spot for each dot in a tight cluster at the middle: where the opening gather starts. */
+/**
+ * Where each dot starts the opening: a stable random spot spread over the whole avatar, tiny and
+ * faint, so the gather reads as the bot pulling itself together. Outer dots arrive last.
+ */
 export function sparkScatter(id: number, size: number, color: string, ink: SparkInk = "light") {
   const rand = (salt: number) => {
     let x = (Math.imul(id, 2654435761) + Math.imul(salt, 40503)) >>> 0;
-    x ^= x >>> 13;
+    x = (x ^ (x >>> 13)) >>> 0;
     x = Math.imul(x, 0x5bd1e995) >>> 0;
-    x ^= x >>> 15;
+    x = (x ^ (x >>> 15)) >>> 0;
     return (x % 10000) / 10000;
   };
-  const reach = size * 0.22;
-  const x = size / 2 + (rand(1) - 0.5) * reach;
-  const y = size / 2 + (rand(2) - 0.5) * reach;
-  const distance = Math.hypot(x - size / 2, y - size / 2) / reach;
+  const angle = rand(1) * Math.PI * 2;
+  const distance = 0.15 + rand(2) * 0.85;
+  const reach = size * 0.48;
   return {
-    x,
-    y,
-    d: 2 * (1 + rand(3) * 1.2),
+    x: size / 2 + Math.cos(angle) * distance * reach,
+    y: size / 2 + Math.sin(angle) * distance * reach,
+    d: 1 + rand(3) * 1.5,
+    delay: Math.min(0.32, distance * 0.22 + rand(5) * 0.1),
     color: dotColor(color, 0.22, rand(4) * 0.35, INK_RGB[ink]),
-    delay: Math.min(0.12, distance * 0.06 + rand(5) * 0.04),
   };
 }

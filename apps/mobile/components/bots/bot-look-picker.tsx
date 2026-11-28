@@ -40,6 +40,9 @@ export function BotLookPicker({
   const tokens = useMobileTokens();
   const { photo, shapeIndex: shape, color, defaultLook } = botLookState(value);
   const labeled = !organicIdentities;
+  // SparkAI draws every look as a halftone character, and an organic body's character is
+  // picked from the bot's id, so those choices would repeat the stored shapes. Each shape once.
+  const spark = sparkProductEnabled();
 
   return (
     <View style={{ gap: 20 }}>
@@ -47,7 +50,7 @@ export function BotLookPicker({
         <View>
           {labeled ? <Label>{t`Shape`}</Label> : null}
           <View accessibilityRole="radiogroup" style={grid}>
-            {organicIdentities ? (
+            {spark ? null : organicIdentities ? (
               organicIdentities.map((organic, index) => (
                 <Choice
                   disabled={disabled}
@@ -73,7 +76,7 @@ export function BotLookPicker({
               <Choice
                 disabled={disabled}
                 key={key}
-                label={t`Shape ${ph({ number: index + 1 + (organicIdentities?.length ?? 0) })}`}
+                label={t`Shape ${ph({ number: index + 1 + (spark ? 0 : (organicIdentities?.length ?? 0)) })}`}
                 selected={shape === index}
                 onPress={() => onChange(botLookWithShape(color, index))}
               >

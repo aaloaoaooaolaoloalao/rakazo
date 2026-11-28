@@ -3,10 +3,12 @@ import type { BotAvatarSet } from "@rakazo/contracts";
 import { BOT_NAME_MAX_LENGTH, resolveBotAvatarSet } from "@rakazo/contracts";
 import {
   botLookState,
+  botLookWithShape,
   newBotLook,
   newBotLookInput,
   newBotPreviewIdentity,
   ORGANIC_PREVIEW_IDENTITIES,
+  SHIPPED_BOT_AVATAR_SHAPE_KEYS,
 } from "@rakazo/core";
 import { Stack, useLocalSearchParams, useRouter } from "expo-router";
 import { useEffect, useRef, useState } from "react";
@@ -42,7 +44,13 @@ export default function NewBot() {
   const currentSet = meRead.data ? resolveBotAvatarSet(meRead.data.botAvatarSet) : undefined;
   const avatarSet = currentSet ?? resolveBotAvatarSet(params.avatarSet);
   const [name, setName] = useState("");
-  const [look, setLook] = useState(newBotLook);
+  // SparkAI starts on one of the stored shapes, so the bot is saved looking like its preview.
+  const [look, setLook] = useState(() => {
+    const fresh = newBotLook();
+    if (!sparkProductEnabled()) return fresh;
+    const shape = Math.floor(Math.random() * SHIPPED_BOT_AVATAR_SHAPE_KEYS.length);
+    return { ...fresh, color: botLookWithShape(fresh.color, shape) };
+  });
   // Once the screen is gone, a creation still in flight must not open the chat.
   const gone = useRef(false);
   // Set with the Create tap: the header's Cancel can still be the one rendered before it.

@@ -7,7 +7,6 @@ import { ScrollView, Text, View } from "react-native";
 import { BotMemberPicker } from "../components/bots/bot-member-picker";
 import { GroupAvatar } from "../components/bots/group-avatar";
 import { glassHeaderOptions } from "../components/native/glass-title";
-import { NativeActionButton } from "../components/native/native-action-button";
 import {
   SettingsGroup,
   SettingsInputRow,
@@ -25,6 +24,7 @@ import {
 import { useSideInsets } from "../lib/layout/side-insets";
 import { announceToScreenReader } from "../lib/native/announce";
 import { useMobileTokens } from "../lib/native/native";
+import { useScreenHeader } from "../lib/navigation/screen-header";
 import { formRead, queryClient, rpcQuery, useSave } from "../lib/query/query";
 import type { SettingsTarget } from "../lib/query/settings-target";
 
@@ -166,6 +166,23 @@ export default function GroupSettingsScreen() {
     saving.run(input);
   }
 
+  const memberIds = group?.members.map((member) => member.botId).join(",");
+  const dirty = Boolean(group) && (name.trim() !== group?.name || selected.join(",") !== memberIds);
+  // Save sits in the header, as on other settings screens, and only once something changed.
+  useScreenHeader({
+    action: dirty
+      ? {
+          label: t`Save`,
+          onPress: save,
+          busy: pending,
+          disabled:
+            !name.trim() ||
+            selected.length < GROUP_MEMBER_MIN ||
+            selected.length > GROUP_MEMBER_MAX,
+        }
+      : null,
+  });
+
   function remove() {
     if (groupId && group) confirmDeleteGroup(group, () => removal.run(groupId));
   }
@@ -182,14 +199,25 @@ export default function GroupSettingsScreen() {
         keyboardDismissMode="on-drag"
       >
         {group ? (
-          <View style={{ alignItems: "center" }}>
+          <View style={{ alignItems: "center", gap: 12 }}>
             <GroupAvatar
-              size={64}
+              size={72}
               members={selected.slice(0, 3).flatMap((id) => {
                 const bot = bots.find((item) => item.id === id);
                 return bot ? [{ botId: bot.id, color: bot.color, avatarSet: bot.avatarSet }] : [];
               })}
             />
+            <Text
+              numberOfLines={2}
+              style={{
+                color: tokens.foreground,
+                fontSize: 22,
+                fontWeight: "600",
+                textAlign: "center",
+              }}
+            >
+              {name.trim() || group.name}
+            </Text>
           </View>
         ) : null}
         <SettingsGroup label={t`Name`}>
@@ -239,16 +267,6 @@ export default function GroupSettingsScreen() {
             {error ?? loadError}
           </Text>
         ) : null}
-        <NativeActionButton
-          disabled={
-            !name.trim() ||
-            selected.length < GROUP_MEMBER_MIN ||
-            selected.length > GROUP_MEMBER_MAX ||
-            pending
-          }
-          label={pending ? t`Saving…` : t`Save`}
-          onPress={save}
-        />
       </ScrollView>
     </>
   );

@@ -20,6 +20,14 @@ const { rpc, router, alert, selection, archivedListeners, params } = vi.hoisted(
   selection: { spaceId: "space-1" },
   archivedListeners: new Set<() => void>(),
 }));
+const header = vi.hoisted(() => ({
+  action: null as null | { label: string; onPress: () => void; disabled?: boolean; busy?: boolean },
+}));
+vi.mock("../navigation/screen-header", () => ({
+  useScreenHeader: ({ action }: { action?: typeof header.action }) => {
+    header.action = action ?? null;
+  },
+}));
 vi.mock("../layout/side-insets", () => ({ useSideInsets: () => ({}) }));
 vi.mock("../api/api", () => ({
   rpc,
@@ -174,6 +182,7 @@ let container: HTMLDivElement;
 let write: Deferred<unknown>;
 beforeEach(() => {
   vi.clearAllMocks();
+  header.action = null;
   queryClient.clear();
   archivedListeners.clear();
   selection.spaceId = "space-1";
@@ -193,6 +202,16 @@ afterEach(async () => {
   container.remove();
   vi.unstubAllGlobals();
 });
+/** The header's Save, pressed as the native bar button would be; absent while nothing changed. */
+const save = () =>
+  header.action
+    ? {
+        click: () => {
+          if (!header.action?.disabled && !header.action?.busy) header.action?.onPress();
+        },
+        disabled: Boolean(header.action.disabled || header.action.busy),
+      }
+    : undefined;
 const button = (label: string) =>
   [...container.querySelectorAll("button")].find((item) => item.textContent === label);
 const writes = (procedure: string) => rpc.mock.calls.filter(([called]) => called === procedure);
@@ -211,8 +230,8 @@ it("saves once on a double tap to the group's Space, holds the form, then goes b
   // Another Space selected meanwhile: the group still saves where it lives.
   selection.spaceId = "space-2";
   await act(async () => {
-    button("Save")!.click();
-    button("Save")!.click();
+    save()!.click();
+    save()!.click();
   });
   expect(writes("groups/update")).toEqual([
     [
@@ -221,7 +240,7 @@ it("saves once on a double tap to the group's Space, holds the form, then goes b
       { requestContext: expect.objectContaining({ headers: { "x-rakazo-space-id": "space-1" } }) },
     ],
   ]);
-  expect(button("Saving…")!.disabled).toBe(true);
+  expect(save()!.disabled).toBe(true);
   expect(container.querySelector("output")!.dataset.disabled).toBe("true");
   await act(async () => write.resolve({}));
   expect(router.back).toHaveBeenCalledOnce();
@@ -230,11 +249,11 @@ it("saves once on a double tap to the group's Space, holds the form, then goes b
 it("shows a failed save and offers Save again", async () => {
   await act(async () => root.render(<GroupSettingsScreen />));
   await rename("Crew");
-  await act(async () => button("Save")!.click());
+  await act(async () => save()!.click());
   await act(async () => write.reject(new Error("Name taken")));
   expect(container.textContent).toContain("Name taken");
   expect(announce).toHaveBeenCalledExactlyOnceWith("Name taken");
-  expect(button("Save")!.disabled).toBe(false);
+  expect(save()!.disabled).toBe(false);
   expect(router.back).not.toHaveBeenCalled();
 });
 
@@ -257,8 +276,8 @@ it("starts from the new group's own values when another group opens in place", a
   await act(async () => root.render(<GroupSettingsScreen />));
   expect(container.querySelector("input")!.value).toBe("Crew");
   expect(container.querySelector("output")!.textContent).toBe("bot-1,bot-3");
-  await act(async () => button("Save")!.click());
-  expect(writes("groups/update")).toHaveLength(0);
+  // Nothing changed in the group now shown, so there is nothing to save.
+  expect(save()).toBeUndefined();
 });
 
 it("deletes after confirming and leaves for the inbox, or alerts why not", async () => {
@@ -290,13 +309,13 @@ it("says when the group is gone", async () => {
 it("announces each failed save, and a repeat of the same failure again", async () => {
   await act(async () => root.render(<GroupSettingsScreen />));
   await rename("Crew");
-  await act(async () => button("Save")!.click());
+  await act(async () => save()!.click());
   expect(announce).not.toHaveBeenCalled();
   await act(async () => write.reject(new Error("Name taken")));
   expect(announce).toHaveBeenCalledExactlyOnceWith("Name taken");
 
   write = deferred();
-  await act(async () => button("Save")!.click());
+  await act(async () => save()!.click());
   await act(async () => write.reject(new Error("Name taken")));
   expect(announce).toHaveBeenCalledTimes(2);
   expect(announce).toHaveBeenLastCalledWith("Name taken");
