@@ -67,6 +67,10 @@ export function showOrganizations(): boolean {
   return sparkShown(PRODUCT_UI.hideOrganizations);
 }
 
+export function showActivity(): boolean {
+  return sparkShown(PRODUCT_UI.hideActivity);
+}
+
 function sparkShown(hidden: boolean): boolean {
   return !(sparkProductEnabled() && hidden);
 }

@@ -3,12 +3,14 @@ import { useNavigation, useRouter } from "expo-router";
 import type { ReactNode } from "react";
 import { useLayoutEffect } from "react";
 import { useUiLocale } from "../i18n/i18n";
+import { showActivity } from "../spark/product";
 import type { CreateAction } from "./create-chooser";
 import { visibleCreateMenuItems } from "./create-chooser";
 
 /**
  * Liquid Glass home header: activity and search together on the right, and create on its own
- * glass after them. Account and integrations sit in the bottom toolbar (`InboxToolbar`).
+ * glass after them. Account and integrations sit in the bottom toolbar (`InboxToolbar`), except
+ * where Activity is hidden: there account takes the leading corner and integrations its place.
  */
 export function useInboxHeader({
   nativeHeader,
@@ -40,15 +42,36 @@ export function useInboxHeader({
       headerStyle: { backgroundColor: "transparent" },
       title: "",
       headerTitle,
+      ...(showActivity()
+        ? {}
+        : {
+            unstable_headerLeftItems: () => [
+              {
+                type: "button" as const,
+                label: t`Account`,
+                accessibilityLabel: t`Account`,
+                icon: { type: "sfSymbol" as const, name: "person.crop.circle" },
+                onPress: () => router.push("/account"),
+              },
+            ],
+          }),
       unstable_headerRightItems: () => [
-        {
-          type: "button" as const,
-          label: t`Activity`,
-          accessibilityLabel: t`Activity`,
-          icon: { type: "sfSymbol" as const, name: activityMode ? "bell.fill" : "bell" },
-          selected: activityMode,
-          onPress: toggleActivityMode,
-        },
+        showActivity()
+          ? {
+              type: "button" as const,
+              label: t`Activity`,
+              accessibilityLabel: t`Activity`,
+              icon: { type: "sfSymbol" as const, name: activityMode ? "bell.fill" : "bell" },
+              selected: activityMode,
+              onPress: toggleActivityMode,
+            }
+          : {
+              type: "button" as const,
+              label: t`Integrations`,
+              accessibilityLabel: t`Integrations`,
+              icon: { type: "sfSymbol" as const, name: "square.grid.2x2" },
+              onPress: () => router.push("/integrations"),
+            },
         {
           type: "button" as const,
           label: t`Search`,

@@ -1,6 +1,7 @@
 import { readFileSync } from "node:fs";
 import { afterEach, describe, expect, it, vi } from "vitest";
 import {
+  showActivity,
   showAppleWatch,
   showBilling,
   showLabs,
@@ -37,6 +38,7 @@ describe("Spark product surface", () => {
     expect(showSignupSurvey()).toBe(true);
     expect(showMeetings()).toBe(true);
     expect(showOrganizations()).toBe(true);
+    expect(showActivity()).toBe(true);
   });
 
   it("reads the public flag Metro inlines, and ignores SPARK alone", () => {
@@ -64,5 +66,6 @@ describe("Spark product surface", () => {
     expect(showSignupSurvey()).toBe(false);
     expect(showMeetings()).toBe(false);
     expect(showOrganizations()).toBe(false);
+    expect(showActivity()).toBe(false);
   });
 });

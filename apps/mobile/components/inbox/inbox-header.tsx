@@ -9,6 +9,7 @@ import type { CreateAction } from "../../lib/inbox/create-chooser";
 import { createMenuActions, isCreateAction } from "../../lib/inbox/create-chooser";
 import { setInboxHidden, useSplitView } from "../../lib/layout/split-view";
 import { useThemedStyles } from "../../lib/native/native";
+import { showActivity } from "../../lib/spark/product";
 import { GlassSurface } from "../native/glass-surface";
 import { NativeSymbol } from "../native/native-symbol";
 import { CREATE_MENU_GAP, createInboxStyles } from "./inbox-styles";
@@ -84,19 +85,28 @@ export function InboxHeader({
       {title ? <View style={styles.headerTitle}>{title}</View> : null}
       <View style={styles.headerActions}>
         <GlassSurface style={styles.headerGroup} fallbackStyle={styles.headerFill}>
-          <HeaderButton
-            accessibilityLabel={t`Activity`}
-            active={activityMode}
-            accent
-            onPress={toggleActivityMode}
-          >
-            <NativeSymbol
-              ios={activityMode ? "bell.fill" : "bell"}
-              android={activityMode ? "notifications" : "notifications-outline"}
-              size={17}
-              color={activityMode ? tokens.primaryForeground : tokens.foreground}
-            />
-          </HeaderButton>
+          {showActivity() ? (
+            <HeaderButton
+              accessibilityLabel={t`Activity`}
+              active={activityMode}
+              accent
+              onPress={toggleActivityMode}
+            >
+              <NativeSymbol
+                ios={activityMode ? "bell.fill" : "bell"}
+                android={activityMode ? "notifications" : "notifications-outline"}
+                size={17}
+                color={activityMode ? tokens.primaryForeground : tokens.foreground}
+              />
+            </HeaderButton>
+          ) : (
+            <HeaderButton
+              accessibilityLabel={t`Integrations`}
+              onPress={() => router.push("/integrations")}
+            >
+              <NativeSymbol ios="square.grid.2x2" android="apps-outline" size={17} />
+            </HeaderButton>
+          )}
           <HeaderButton
             testID="home-search-button"
             accessibilityLabel={t`Search`}

@@ -12,6 +12,7 @@ import {
 import { useState } from "react";
 import { Pressable, Text, View } from "react-native";
 import { errorText } from "../../lib/api/user-error";
+import { hapticSelection } from "../../lib/native/haptics";
 import { useThemedStyles } from "../../lib/native/native";
 import { rpcQuery, useSave } from "../../lib/query/query";
 import { useScreenQuery } from "../../lib/query/screen-query";
@@ -19,10 +20,12 @@ import { MenuPicker } from "../ui/menu-picker";
 import { Chevron } from "../ui/row-accessories";
 import { createIntegrationsStyles } from "./integrations-styles";
 
-export function ToolPermissions({ tools, slug }: { tools: AppPermissionTool[]; slug: string }) {
+/**
+ * The approval rules for one app's tools: the choices each tool offers, the one in effect (the
+ * one just picked while it saves), and changing it.
+ */
+export function useToolPermissions() {
   const { t } = useLingui();
-  const styles = useThemedStyles(createIntegrationsStyles);
-  const [open, setOpen] = useState({ reads: false, other: false });
   const permissionsRead = rpcQuery("approvalRules/effective", {});
   const permissions = useScreenQuery(permissionsRead);
   const snapshot = permissions.data;
@@ -40,7 +43,6 @@ export function ToolPermissions({ tools, slug }: { tools: AppPermissionTool[]; s
     },
   });
   const loadError = permissions.error;
-  const disabled = !snapshot || permissions.isFetching || Boolean(loadError) || change.pending;
   const mode = snapshot?.mode;
   const labels = {
     default: t`Default`,
@@ -53,9 +55,38 @@ export function ToolPermissions({ tools, slug }: { tools: AppPermissionTool[]; s
     label: labels[permission],
     disabled,
   }));
+  const failure = change.error ?? loadError;
+  return {
+    choices,
+    mode,
+    disabled: !snapshot || Boolean(loadError) || change.pending,
+    /** The rule for `key`, showing the choice being saved at once. */
+    ruleFor(key: string): string {
+      if (change.pending && change.input?.key === key) return change.input.permission;
+      return rules.get(key.toLowerCase())?.effect ?? "default";
+    },
+    choose(key: string, value: string) {
+      const choice = choices.find((entry) => entry.key === value);
+      if (!choice || choice.disabled) return;
+      hapticSelection();
+      change.run({ key, permission: choice.key });
+    },
+    failure: failure
+      ? errorText(
+          failure,
+          change.error ? t`Could not save permission` : t`Could not load permissions`,
+        )
+      : null,
+  };
+}
+
+export function ToolPermissions({ tools, slug }: { tools: AppPermissionTool[]; slug: string }) {
+  const { t } = useLingui();
+  const styles = useThemedStyles(createIntegrationsStyles);
+  const [open, setOpen] = useState({ reads: false, other: false });
+  const { choices, mode, disabled, ruleFor, choose, failure } = useToolPermissions();
   const grouped = groupAppPermissionTools(tools);
   const titles = { reads: t`Reads`, other: t`Other actions` };
-  const failure = change.error ?? loadError;
 
   return (
     <View style={styles.card}>
@@ -99,15 +130,11 @@ export function ToolPermissions({ tools, slug }: { tools: AppPermissionTool[]; s
                           <MenuPicker
                             label={label}
                             choices={choices}
-                            value={rules.get(key.toLowerCase())?.effect ?? "default"}
+                            value={ruleFor(key)}
                             disabled={disabled}
                             plain
                             showLabel={false}
-                            onChange={(value) => {
-                              const choice = choices.find((entry) => entry.key === value);
-                              if (choice && !choice.disabled)
-                                change.run({ key, permission: choice.key });
-                            }}
+                            onChange={(value) => choose(key, value)}
                           />
                         </View>
                       ) : null}
@@ -121,10 +148,7 @@ export function ToolPermissions({ tools, slug }: { tools: AppPermissionTool[]; s
       })}
       {failure ? (
         <Text accessibilityRole="alert" style={styles.error}>
-          {errorText(
-            failure,
-            change.error ? t`Could not save permission` : t`Could not load permissions`,
-          )}
+          {failure}
         </Text>
       ) : null}
     </View>

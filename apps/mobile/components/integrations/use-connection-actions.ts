@@ -10,6 +10,7 @@ import { rpc } from "../../lib/api/api";
 import { errorText } from "../../lib/api/user-error";
 import { captureSessionScope } from "../../lib/api/verified-scope";
 import { loadLastBotId } from "../../lib/inbox/last-bot";
+import { connectInApp } from "../../lib/integrations/connect-in-app";
 import { signInToMcpServer } from "../../lib/integrations/mcp-oauth";
 import { queryClient, useSave } from "../../lib/query/query";
 
@@ -17,6 +18,21 @@ type Read<T> = { queryKey: DataTag<QueryKey, T, Error> };
 
 /** A connection stopped before it finished; nothing to report and nothing to read again. */
 class ConnectStopped extends Error {}
+
+type WebBrowser = typeof import("expo-web-browser");
+let webBrowser: WebBrowser | null = null;
+
+/** Opens a sign-in page in the in-app browser; resolves when the page closes. */
+async function openSignInPage(url: string) {
+  // Deferred, as other sign-ins are, so an older binary without the module fails with a message.
+  webBrowser ??= await import("expo-web-browser");
+  // No page sends people back to this address: the page closes when they close it or it is done.
+  return webBrowser.openAuthSessionAsync(url, "rakazo://integrations");
+}
+
+function closeSignInPage() {
+  webBrowser?.dismissAuthSession();
+}
 
 /**
  * The Integrations screen's account and server actions. Each one belongs to the Space it was
@@ -33,6 +49,7 @@ export function useConnectionActions({
   setLastBotId,
   closeDetail,
   captureFocus,
+  inAppSignIn = false,
 }: {
   catalogRead: Read<ConnectionCatalogItem[]>;
   connectionsRead: Read<Connection[]>;
@@ -46,6 +63,8 @@ export function useConnectionActions({
   closeDetail: (item?: ConnectionCatalogItem) => void;
   /** Whether the screen keeps the focus it has now, as the screen counts its visits. */
   captureFocus: () => () => boolean;
+  /** Signs in on a page in the in-app browser that closes itself, instead of in the browser app. */
+  inAppSignIn?: boolean;
 }) {
   const { t } = useLingui();
   const connectionAttempt = useRef<AbortController | null>(null);
@@ -105,20 +124,39 @@ export function useConnectionActions({
   }
 
   const connect = useSave({
-    save: async (item: ConnectionCatalogItem, send) => {
+    save: async (item: ConnectionCatalogItem & { replacing?: Connection }, send) => {
       // One attempt at a time: one started in another Space stops the earlier one.
       connectionAttempt.current?.abort();
       const focused = captureFocus();
       const controller = new AbortController();
       connectionAttempt.current = controller;
       try {
-        const result = await connectCatalogItem(item, connections, {
-          begin: (input) => send("connections/begin", input),
-          complete: (input) => send("connections/complete", input),
-          openUrl: (url) => Linking.openURL(url),
+        // Trying an unfinished account again replaces it rather than adding a second one.
+        if (item.replacing) {
+          await send("connections/revoke", { connectionId: item.replacing.id });
+          await updateAccount({ ...item.replacing, status: "revoked" });
+        }
+        const remaining = item.replacing
+          ? connections.filter((row) => row.id !== item.replacing?.id)
+          : connections;
+        const flow = {
+          begin: (input: { connectorId: string; provider: string; displayName: string }) =>
+            send("connections/begin", input),
+          complete: (input: { connectionId: string }) => send("connections/complete", input),
           signal: controller.signal,
           isCurrent: captureSessionScope(),
-        });
+        };
+        const result = inAppSignIn
+          ? await connectInApp(item, remaining, {
+              ...flow,
+              revoke: (connectionId) => send("connections/revoke", { connectionId }),
+              openBrowser: openSignInPage,
+              closeBrowser: closeSignInPage,
+            })
+          : await connectCatalogItem(item, remaining, {
+              ...flow,
+              openUrl: (url) => Linking.openURL(url),
+            });
         // Stopped (left, another app tapped, another Space): a failure that shows nothing and
         // reads nothing again, so a queued app starts at once.
         if (result.status === "aborted") throw new ConnectStopped();
@@ -232,12 +270,19 @@ export function useConnectionActions({
       nextConnect.current = { item, isCurrent: captureSessionScope() };
       connectionAttempt.current?.abort();
     },
+    /** Starts an unfinished account's sign-in over, in its place. */
+    retryAccount(row: Connection, item: ConnectionCatalogItem) {
+      if (connect.pending) return;
+      resetFailures();
+      connect.run({ ...item, replacing: row });
+    },
     revokeAccount(row: Connection) {
       resetFailures();
       revoke.run(row);
     },
-    renameAccount(row: Connection) {
-      const displayName = (labelDrafts[row.id] ?? row.displayName).trim();
+    /** Saves the label typed for the account, or `label` when one is given directly. */
+    renameAccount(row: Connection, label?: string) {
+      const displayName = (label ?? labelDrafts[row.id] ?? row.displayName).trim();
       if (!displayName || displayName === row.displayName) return;
       resetFailures();
       rename.run({ row, displayName });
