@@ -9,20 +9,21 @@ import { useQuery } from "@tanstack/react-query";
 import { Stack, useNavigation, useRouter } from "expo-router";
 import { useHeaderHeight } from "expo-router/react-navigation";
 import { useContext, useEffect, useMemo, useState } from "react";
-import { BackHandler, Platform, ScrollView, Text, TextInput, View } from "react-native";
+import { BackHandler, Platform, ScrollView, Text, View } from "react-native";
 import { KeyboardAvoidingView } from "react-native-keyboard-controller";
 import { GroupAvatar } from "../components/bots/group-avatar";
 import { BotChipPicker } from "../components/composer/bot-chip-picker";
 import { GlassIconButton } from "../components/native/glass-icon-button";
 import { NativeActionButton } from "../components/native/native-action-button";
 import { SheetCloseButton } from "../components/native/sheet-close-button";
+import { SettingsGroup, SettingsInputRow } from "../components/settings/settings-group";
 import type { MobileBot } from "../lib/api/mobile-types";
 import { errorText } from "../lib/api/user-error";
 import { CallKeyboardContext } from "../lib/calls/call-keyboard-context";
 import { useSideInsets } from "../lib/layout/side-insets";
 import { announceToScreenReader } from "../lib/native/announce";
 import { hapticSuccess } from "../lib/native/haptics";
-import { native, useMobileTokens } from "../lib/native/native";
+import { useMobileTokens } from "../lib/native/native";
 import { iosAtLeast } from "../lib/native/native-controls";
 import { formRead, queryClient, rpcQuery, useSave } from "../lib/query/query";
 import {
@@ -170,8 +171,8 @@ export default function NewGroup() {
           contentInsetAdjustmentBehavior="automatic"
           style={[{ flex: 1 }, sideInsets]}
           contentContainerStyle={{
-            padding: 24,
-            paddingTop: Platform.OS === "ios" ? 24 : headerHeight + 24,
+            padding: 20,
+            paddingTop: Platform.OS === "ios" ? 20 : headerHeight + 20,
           }}
           keyboardDismissMode="on-drag"
           keyboardShouldPersistTaps="handled"
@@ -180,7 +181,7 @@ export default function NewGroup() {
             <BotChipPicker bots={bots} selected={selected} onChange={setSelected} />
           ) : (
             <View key="name">
-              <View style={{ alignItems: "center", marginTop: 24, marginBottom: 32 }}>
+              <View style={{ alignItems: "center", marginTop: 8, marginBottom: 24 }}>
                 <GroupAvatar
                   size={120}
                   members={picked
@@ -188,31 +189,24 @@ export default function NewGroup() {
                     .map((bot) => ({ botId: bot.id, color: bot.color, avatarSet: bot.avatarSet }))}
                 />
               </View>
-              <TextInput
-                autoFocus
-                value={name}
-                onChangeText={setName}
-                maxLength={GROUP_NAME_MAX_LENGTH}
-                autoCapitalize="words"
-                autoCorrect={false}
-                autoComplete="off"
-                textContentType="none"
-                editable={!pending}
-                placeholder={t`Ex: Project Falcon`}
-                placeholderTextColor={tokens.mutedForeground}
-                returnKeyType="done"
-                onSubmitEditing={create}
-                style={{
-                  height: 56,
-                  borderRadius: 11,
-                  backgroundColor: native.fill,
-                  color: tokens.foreground,
-                  fontSize: 22,
-                  fontWeight: "600",
-                  textAlign: "center",
-                  paddingHorizontal: 14,
-                }}
-              />
+              <SettingsGroup label={t`Name`}>
+                <SettingsInputRow
+                  key="name"
+                  autoFocus
+                  accessibilityLabel={t`Name`}
+                  value={name}
+                  onChangeText={setName}
+                  maxLength={GROUP_NAME_MAX_LENGTH}
+                  autoCapitalize="words"
+                  autoCorrect={false}
+                  autoComplete="off"
+                  textContentType="none"
+                  editable={!pending}
+                  placeholder={t`Ex: Project Falcon`}
+                  returnKeyType="done"
+                  onSubmitEditing={create}
+                />
+              </SettingsGroup>
               <NativeActionButton
                 fill
                 label={pending ? t`Creating…` : name.trim() ? t`Create` : t`Skip`}

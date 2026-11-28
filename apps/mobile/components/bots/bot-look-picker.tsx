@@ -10,7 +10,9 @@ import {
 } from "@rakazo/core";
 import type { ReactNode } from "react";
 import { Pressable, Text, View } from "react-native";
+import { hapticSelection } from "../../lib/native/haptics";
 import { useMobileTokens } from "../../lib/native/native";
+import { sparkProductEnabled } from "../../lib/spark/product";
 import { BotAvatar } from "./bot-avatar";
 
 /**
@@ -149,19 +151,26 @@ function Choice({
   children: ReactNode;
 }) {
   const tokens = useMobileTokens();
+  // SparkAI draws the halftone characters: a round ring and a press that answers, as in its
+  // SwiftUI picker, with a selection tick each time the shape changes.
+  const spark = sparkProductEnabled();
   return (
     <Pressable
       accessibilityRole="radio"
       accessibilityLabel={label}
       accessibilityState={{ checked: selected, disabled }}
       disabled={disabled}
-      onPress={onPress}
-      style={{
+      onPress={() => {
+        if (spark && !selected) hapticSelection();
+        onPress();
+      }}
+      style={({ pressed }) => ({
         padding: 4,
-        borderRadius: 14,
+        borderRadius: spark ? 999 : 14,
         borderWidth: 2,
         borderColor: selected ? tokens.foreground : "transparent",
-      }}
+        transform: [{ scale: spark && pressed ? 0.9 : 1 }],
+      })}
     >
       {children}
     </Pressable>

@@ -3,10 +3,16 @@ import { GROUP_MEMBER_MAX, GROUP_MEMBER_MIN, GROUP_NAME_MAX_LENGTH } from "@raka
 import { useQuery } from "@tanstack/react-query";
 import { Stack, useLocalSearchParams, useRouter } from "expo-router";
 import { useContext, useEffect, useRef, useState } from "react";
-import { ScrollView, Text, TextInput } from "react-native";
+import { ScrollView, Text, View } from "react-native";
 import { BotMemberPicker } from "../components/bots/bot-member-picker";
+import { GroupAvatar } from "../components/bots/group-avatar";
 import { glassHeaderOptions } from "../components/native/glass-title";
 import { NativeActionButton } from "../components/native/native-action-button";
+import {
+  SettingsGroup,
+  SettingsInputRow,
+  SettingsRow,
+} from "../components/settings/settings-group";
 import { selectedSpaceId } from "../lib/api/api";
 import type { MobileBot, MobileGroup } from "../lib/api/mobile-types";
 import { errorText } from "../lib/api/user-error";
@@ -18,7 +24,7 @@ import {
 } from "../lib/inbox/archived/archived-chats";
 import { useSideInsets } from "../lib/layout/side-insets";
 import { announceToScreenReader } from "../lib/native/announce";
-import { native, useMobileTokens } from "../lib/native/native";
+import { useMobileTokens } from "../lib/native/native";
 import { formRead, queryClient, rpcQuery, useSave } from "../lib/query/query";
 import type { SettingsTarget } from "../lib/query/settings-target";
 
@@ -169,29 +175,34 @@ export default function GroupSettingsScreen() {
       <Stack.Screen options={glassHeaderOptions(t`Group settings`)} />
       <ScrollView
         style={[{ flex: 1, backgroundColor: tokens.background }, sideInsets]}
-        contentContainerStyle={{ padding: 24 }}
+        contentContainerStyle={{ width: "100%", padding: 20, gap: 24, paddingBottom: 40 }}
         automaticallyAdjustKeyboardInsets={!rootAvoidsKeyboard}
         contentInsetAdjustmentBehavior="automatic"
         keyboardShouldPersistTaps="handled"
         keyboardDismissMode="on-drag"
       >
-        <Text style={{ color: tokens.mutedForeground, fontSize: 14 }}>{t`Name`}</Text>
-        <TextInput
-          value={name}
-          onChangeText={setName}
-          maxLength={GROUP_NAME_MAX_LENGTH}
-          placeholder={t`Group name`}
-          placeholderTextColor={tokens.mutedForeground}
-          returnKeyType="done"
-          style={{
-            marginTop: 8,
-            backgroundColor: native.fill,
-            borderRadius: 11,
-            padding: 14,
-            color: tokens.foreground,
-            fontSize: 16,
-          }}
-        />
+        {group ? (
+          <View style={{ alignItems: "center" }}>
+            <GroupAvatar
+              size={64}
+              members={selected.slice(0, 3).flatMap((id) => {
+                const bot = bots.find((item) => item.id === id);
+                return bot ? [{ botId: bot.id, color: bot.color, avatarSet: bot.avatarSet }] : [];
+              })}
+            />
+          </View>
+        ) : null}
+        <SettingsGroup label={t`Name`}>
+          <SettingsInputRow
+            key="name"
+            accessibilityLabel={t`Name`}
+            value={name}
+            onChangeText={setName}
+            maxLength={GROUP_NAME_MAX_LENGTH}
+            placeholder={t`Group name`}
+            returnKeyType="done"
+          />
+        </SettingsGroup>
         {group ? (
           <BotMemberPicker
             key={group.id}
@@ -210,8 +221,21 @@ export default function GroupSettingsScreen() {
             disabled={pending}
           />
         ) : null}
+        {groupId ? (
+          <SettingsGroup>
+            <SettingsRow
+              key="pages"
+              title={t`Pages`}
+              chevron="right"
+              onPress={() => router.push({ pathname: "/pages", params: { groupId } })}
+            />
+          </SettingsGroup>
+        ) : null}
+        <SettingsGroup>
+          <SettingsRow key="delete" destructive title={t`Delete group`} onPress={remove} />
+        </SettingsGroup>
         {error || loadError ? (
-          <Text accessibilityRole="alert" style={{ color: tokens.destructive, marginTop: 12 }}>
+          <Text accessibilityRole="alert" style={{ color: tokens.destructive }}>
             {error ?? loadError}
           </Text>
         ) : null}
@@ -224,20 +248,6 @@ export default function GroupSettingsScreen() {
           }
           label={pending ? t`Saving…` : t`Save`}
           onPress={save}
-          style={{ marginTop: 24 }}
-        />
-        {groupId ? (
-          <NativeActionButton
-            label={t`Pages`}
-            onPress={() => router.push({ pathname: "/pages", params: { groupId } })}
-            style={{ marginTop: 16 }}
-          />
-        ) : null}
-        <NativeActionButton
-          label={t`Delete group`}
-          onPress={remove}
-          prominence="destructive"
-          style={{ marginTop: 16 }}
         />
       </ScrollView>
     </>

@@ -13,6 +13,7 @@ import { useEffect, useRef, useState } from "react";
 import { AccessibilityInfo, BackHandler, ScrollView, Text, TextInput, View } from "react-native";
 import { BotAvatar } from "../components/bots/bot-avatar";
 import { BotLookPicker } from "../components/bots/bot-look-picker";
+import { SparkHeroAvatar } from "../components/bots/spark-morph-avatar";
 import { NativeActionButton } from "../components/native/native-action-button";
 import { cancelHeaderOptions } from "../components/native/sheet-header";
 import { selectedSpaceId } from "../lib/api/api";
@@ -24,6 +25,7 @@ import { useSideInsets } from "../lib/layout/side-insets";
 import { native, useMobileTokens } from "../lib/native/native";
 import { accountRpcQuery, useSave } from "../lib/query/query";
 import { useScreenQuery } from "../lib/query/screen-query";
+import { sparkProductEnabled } from "../lib/spark/product";
 
 type NewBotInput = Parameters<typeof createInboxBot>[0]["input"];
 
@@ -148,7 +150,11 @@ export default function NewBot() {
         keyboardShouldPersistTaps="handled"
       >
         <View style={{ alignItems: "center", marginTop: 8, marginBottom: 24 }}>
-          <BotAvatar color={look.color} identity={identity} avatarSet={avatarSet} size={96} />
+          {sparkProductEnabled() ? (
+            <SparkHeroAvatar color={look.color} identity={identity} size={96} />
+          ) : (
+            <BotAvatar color={look.color} identity={identity} avatarSet={avatarSet} size={96} />
+          )}
         </View>
         <TextInput
           autoFocus
