@@ -26,6 +26,7 @@
   },
   "scripts": {
     "start": "expo start",
+    "dev:spark": "EXPO_PUBLIC_SPARK=1 EXPO_PUBLIC_API_URL=https://34-165-87-142.sslip.io expo start --dev-client",
     "android": "expo run:android",
     "ios": "expo run:ios",
     "check": "cross-env EXPO_OFFLINE=1 expo install --check && tsrs --noEmit -p tsconfig.json",
@@ -49,11 +50,13 @@
     "@sentry/react-native": "8.28.0",
     "@tanstack/react-query": "5.107.1",
     "expo": "58.0.26",
+    "expo-apple-authentication": "58.0.3",
     "expo-application": "58.1.2",
     "expo-audio": "58.0.12",
     "expo-calendar": "58.0.8",
     "expo-clipboard": "58.0.4",
     "expo-constants": "58.0.16",
+    "expo-dev-client": "58.0.22",
     "expo-document-picker": "58.0.5",
     "expo-file-system": "58.0.14",
     "expo-font": "58.0.12",
@@ -92,7 +95,6 @@
     "react-native-web": "0.21.4",
     "react-native-webview": "14.0.1",
     "react-native-worklets": "0.13.0",
-    "expo-apple-authentication": "58.0.3",
     "zod": "4.6.7"
   },
   "devDependencies": {
