@@ -3,7 +3,7 @@ import { useLingui } from "@lingui/react/macro";
 import { replyAttachment } from "@rakazo/core";
 import type { ReactNode } from "react";
 import { useContext, useEffect, useRef } from "react";
-import { Image, Platform, Pressable, Text, View } from "react-native";
+import { Image, Platform, Pressable, ScrollView, Text, View } from "react-native";
 import type { SharedValue } from "react-native-reanimated";
 import Animated, { interpolate, useAnimatedStyle } from "react-native-reanimated";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
@@ -11,6 +11,7 @@ import type { MobileMessage } from "../../lib/api/mobile-types";
 import { mobileTokens } from "../../lib/appearance/appearance";
 import type { MobileArtifactTarget } from "../../lib/artifacts/artifact-open";
 import { CallKeyboardContext } from "../../lib/calls/call-keyboard-context";
+import { sparkProductEnabled } from "../../lib/spark/product";
 import type { ThreadColumnPadding } from "../../lib/thread/scroll/thread-edges";
 import type { PendingAttachment } from "../../lib/thread/send/thread-attachments";
 import { previewMessageText } from "../../lib/thread/thread-message-text";
@@ -173,7 +174,10 @@ export function ThreadComposerDock({
                 {attachmentNotice}
               </Text>
             ) : null}
-            {attachments.length ? (
+            {attachments.length && sparkProductEnabled() ? (
+              <SparkAttachmentRow attachments={attachments} onRemove={onRemoveAttachment} />
+            ) : null}
+            {attachments.length && !sparkProductEnabled() ? (
               <View
                 style={{
                   flexDirection: "row",
@@ -233,5 +237,118 @@ export function ThreadComposerDock({
         </View>
       </Animated.View>
     </View>
+  );
+}
+
+/** The SwiftUI app's look: a sliding row of large image thumbnails and file capsules. */
+function SparkAttachmentRow({
+  attachments,
+  onRemove,
+}: {
+  attachments: readonly PendingAttachment[];
+  onRemove: (id: string) => void;
+}) {
+  const { t } = useLingui();
+  const tokens = mobileTokens();
+  return (
+    <ScrollView
+      horizontal
+      showsHorizontalScrollIndicator={false}
+      keyboardShouldPersistTaps="handled"
+      style={{ marginTop: 12, flexGrow: 0 }}
+      contentContainerStyle={{ gap: 6, alignItems: "center" }}
+    >
+      {attachments.map((attachment) => {
+        const remove = t`Remove ${ph({ name: attachment.name })}`;
+        return attachment.previewUri ? (
+          <View
+            key={attachment.id}
+            accessibilityLabel={attachment.name}
+            style={{
+              width: 112,
+              height: 112,
+              borderRadius: 16,
+              borderCurve: "continuous",
+              overflow: "hidden",
+              backgroundColor: tokens.card,
+            }}
+          >
+            <Image
+              source={{ uri: attachment.previewUri }}
+              resizeMode="contain"
+              style={{ width: 112, height: 112 }}
+            />
+            <Pressable
+              accessibilityRole="button"
+              accessibilityLabel={remove}
+              onPress={() => onRemove(attachment.id)}
+              hitSlop={6}
+              style={({ pressed }) => ({
+                position: "absolute",
+                top: 4,
+                end: 4,
+                width: 28,
+                height: 28,
+                borderRadius: 14,
+                alignItems: "center",
+                justifyContent: "center",
+                backgroundColor: "rgba(0, 0, 0, 0.75)",
+                transform: [{ scale: pressed ? 0.9 : 1 }],
+              })}
+            >
+              <NativeSymbol ios="xmark" android="close" size={11} weight="bold" color="white" />
+            </Pressable>
+          </View>
+        ) : (
+          <View
+            key={attachment.id}
+            style={{
+              flexDirection: "row",
+              alignItems: "center",
+              gap: 6,
+              borderRadius: 999,
+              backgroundColor: tokens.card,
+              paddingStart: 10,
+              paddingEnd: 4,
+              paddingVertical: 4,
+            }}
+          >
+            <NativeSymbol
+              ios="doc"
+              android="document-outline"
+              size={15}
+              color={tokens.mutedForeground}
+            />
+            <Text
+              numberOfLines={1}
+              ellipsizeMode="middle"
+              style={{ color: tokens.foreground, fontSize: 13, maxWidth: 160 }}
+            >
+              {attachment.name}
+            </Text>
+            <Pressable
+              accessibilityRole="button"
+              accessibilityLabel={remove}
+              onPress={() => onRemove(attachment.id)}
+              style={({ pressed }) => ({
+                width: 28,
+                height: 28,
+                alignItems: "center",
+                justifyContent: "center",
+                transform: [{ scale: pressed ? 0.9 : 1 }],
+              })}
+            >
+              <NativeSymbol
+                ios="xmark"
+                android="close"
+                size={11}
+                weight="bold"
+                color={tokens.mutedForeground}
+              />
+            </Pressable>
+          </View>
+        );
+      })}
+    </ScrollView>
   );
 }

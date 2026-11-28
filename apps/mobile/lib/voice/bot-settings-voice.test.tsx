@@ -52,6 +52,7 @@ const offered = [
   { identifier: "voice-b", name: "Beth", language: "en-GB" },
 ];
 
+vi.mock("../native/haptics", () => ({ hapticSelection: () => undefined }));
 vi.mock("../layout/side-insets", () => ({ useSideInsets: () => ({}) }));
 vi.mock("./bot-voices", () => ({
   voiceLabel: (voice: { language: string; name: string }) => `${voice.name} (${voice.language})`,

@@ -2,11 +2,9 @@ import { ph } from "@lingui/core/macro";
 import { useLingui } from "@lingui/react/macro";
 import { GROUP_MEMBER_MAX, GROUP_MEMBER_MIN } from "@rakazo/contracts";
 import { useState } from "react";
-import { Pressable, StyleSheet, Text, TextInput, View } from "react-native";
 import type { MobileBot } from "../../lib/api/mobile-types";
-import { native, useMobileTokens } from "../../lib/native/native";
-import { NativeActionButton } from "../native/native-action-button";
 import { NativeSwitch } from "../native/native-switch";
+import { SettingsGroup, SettingsInputRow, SettingsRow } from "../settings/settings-group";
 import { BotAvatar } from "./bot-avatar";
 
 export function BotMemberPicker({
@@ -26,7 +24,6 @@ export function BotMemberPicker({
   initiallyExpanded?: boolean;
 }) {
   const { t } = useLingui();
-  const tokens = useMobileTokens();
   const [expanded, setExpanded] = useState(initiallyExpanded);
   const [query, setQuery] = useState("");
   // Bots ever picked this session stay listed when collapsed so an unchecked
@@ -39,69 +36,43 @@ export function BotMemberPicker({
   const visible = needle ? base.filter((bot) => bot.name.toLowerCase().includes(needle)) : base;
 
   return (
-    <View style={{ marginTop: 20 }}>
-      <View style={styles.header}>
-        <Text style={{ color: tokens.mutedForeground, fontSize: 14 }}>
-          {t`Members (${ph({ count: selected.length })})`}
-        </Text>
-        <NativeActionButton
-          label={expanded ? t`Show selected` : t`Show all`}
-          prominence="quiet"
-          onPress={() => setExpanded((value) => !value)}
-        />
-      </View>
+    <SettingsGroup
+      label={t`Members (${ph({ count: selected.length })})`}
+      footer={
+        expanded
+          ? t`Pick ${ph({ min: GROUP_MEMBER_MIN })}–${ph({ max: GROUP_MEMBER_MAX })}`
+          : undefined
+      }
+    >
       {expanded ? (
-        <>
-          <TextInput
-            value={query}
-            onChangeText={setQuery}
-            placeholder={t`Filter bots`}
-            placeholderTextColor={tokens.faintForeground}
-            accessibilityLabel={t`Filter bots`}
-            style={{
-              marginTop: 8,
-              backgroundColor: native.fill,
-              borderRadius: 11,
-              padding: 10,
-              color: tokens.foreground,
-              fontSize: 16,
-            }}
-          />
-          <Text style={{ color: tokens.mutedForeground, fontSize: 14, marginTop: 8 }}>
-            {t`Pick ${ph({ min: GROUP_MEMBER_MIN })}–${ph({ max: GROUP_MEMBER_MAX })}`}
-          </Text>
-        </>
+        <SettingsInputRow
+          key="filter"
+          value={query}
+          onChangeText={setQuery}
+          placeholder={t`Filter bots`}
+          accessibilityLabel={t`Filter bots`}
+          autoCorrect={false}
+        />
       ) : null}
-      <View>
-        {visible.map((bot) => {
-          const checked = selected.includes(bot.id);
-          const identity = (
-            <>
+      {visible.map((bot) => {
+        const checked = selected.includes(bot.id);
+        return (
+          <SettingsRow
+            key={bot.id}
+            title={bot.name}
+            accessibilityLabel={bot.name}
+            disabled={disabled}
+            onPress={onOpenBot ? () => onOpenBot(bot) : undefined}
+            leading={
               <BotAvatar
                 color={bot.color}
                 avatarSet={bot.avatarSet}
                 identity={bot.id}
-                size={34}
+                size={30}
                 status={bot.status}
               />
-              <Text style={[styles.name, { color: tokens.foreground }]}>{bot.name}</Text>
-            </>
-          );
-          return (
-            <View key={bot.id} style={styles.row}>
-              {onOpenBot ? (
-                <Pressable
-                  accessibilityRole="button"
-                  accessibilityLabel={bot.name}
-                  disabled={disabled}
-                  onPress={() => onOpenBot(bot)}
-                  style={({ pressed }) => [styles.identity, { opacity: pressed ? 0.6 : 1 }]}
-                >
-                  {identity}
-                </Pressable>
-              ) : (
-                identity
-              )}
+            }
+            trailing={
               <NativeSwitch
                 accessibilityLabel={bot.name}
                 disabled={disabled || (!checked && selected.length >= GROUP_MEMBER_MAX)}
@@ -112,22 +83,23 @@ export function BotMemberPicker({
                 }}
                 value={checked}
               />
-            </View>
-          );
-        })}
-        {visible.length === 0 ? (
-          <Text style={{ color: tokens.mutedForeground, fontSize: 14, paddingVertical: 10 }}>
-            {expanded ? t`No matching bots` : t`No members yet`}
-          </Text>
-        ) : null}
-      </View>
-    </View>
+            }
+          />
+        );
+      })}
+      {visible.length === 0 ? (
+        <SettingsRow
+          key="empty"
+          dimmed
+          title={expanded ? t`No matching bots` : t`No members yet`}
+        />
+      ) : null}
+      <SettingsRow
+        key="toggle"
+        tinted
+        title={expanded ? t`Show selected` : t`Show all`}
+        onPress={() => setExpanded((value) => !value)}
+      />
+    </SettingsGroup>
   );
 }
-
-const styles = StyleSheet.create({
-  header: { flexDirection: "row", alignItems: "center", justifyContent: "space-between" },
-  row: { flexDirection: "row", alignItems: "center", gap: 12, paddingVertical: 12 },
-  identity: { flex: 1, flexDirection: "row", alignItems: "center", gap: 12 },
-  name: { flex: 1, fontSize: 16 },
-});

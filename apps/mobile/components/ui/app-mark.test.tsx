@@ -29,11 +29,18 @@ vi.mock("react-native", () => {
   }
 
   return {
+    Animated: { View: MockView, Value: class {} },
+    Easing: {},
     Image: MockImage,
+    Pressable: MockView,
     StyleSheet: { create: <T,>(styles: T) => styles },
     View: MockView,
   };
 });
+vi.mock("react-native-reanimated", () => ({ useReducedMotion: () => false }));
+vi.mock("../../lib/native/haptics", () => ({ hapticImpact: () => undefined }));
+vi.mock("../../lib/spark/product", () => ({ sparkProductEnabled: () => false }));
+vi.mock("../bots/spark-dot-avatar", () => ({ SparkDotAvatar: () => null }));
 
 vi.mock("../../lib/native/native", () => ({
   native: { label: "label" },

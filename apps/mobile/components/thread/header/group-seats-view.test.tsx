@@ -9,9 +9,16 @@ import { GroupSeats } from "./group-seats";
 
 type Props = Record<string, unknown> & { children?: ReactNode; style?: unknown };
 
+const spark = vi.hoisted(() => ({ on: false }));
+vi.mock("../../../lib/spark/product", () => ({ sparkProductEnabled: () => spark.on }));
+vi.mock("../../bots/spark-bot-avatar", () => ({
+  SparkBotAvatar: ({ identity }: { identity?: string }) =>
+    createElement("spark-avatar", { "data-identity": identity }),
+}));
 vi.mock("react-native", () => ({
   View: ({ children, style }: Props) =>
     createElement("div", { "data-style": JSON.stringify(style) }, children),
+  Text: ({ children }: Props) => createElement("span", null, children),
 }));
 // Each drawing primitive renders as an element of its own name, with its props as attributes.
 vi.mock("react-native-svg", () => {
@@ -58,6 +65,7 @@ let container: HTMLDivElement;
 let root: Root;
 
 beforeEach(() => {
+  spark.on = false;
   (globalThis as { IS_REACT_ACT_ENVIRONMENT?: boolean }).IS_REACT_ACT_ENVIRONMENT = true;
   container = document.createElement("div");
   root = createRoot(container);
@@ -144,5 +152,17 @@ describe("GroupSeats", () => {
     );
     // Both bodies are pale, so their eyes stay dark on a light page, as on the bot's own avatar.
     expect(eyes).toEqual(["#141414", "#141414"]);
+  });
+
+  it("draws SparkAI's halftone characters and never the studio bodies", () => {
+    spark.on = true;
+    act(() => root.render(<GroupSeats members={Array.from({ length: 5 }, (_, i) => member(i))} />));
+    expect(container.querySelector("svg-svg")).toBeNull();
+    expect(
+      Array.from(container.querySelectorAll("spark-avatar"), (node) =>
+        node.getAttribute("data-identity"),
+      ),
+    ).toEqual(["bot-0", "bot-1", "bot-2"]);
+    expect(container.textContent).toBe("+2");
   });
 });

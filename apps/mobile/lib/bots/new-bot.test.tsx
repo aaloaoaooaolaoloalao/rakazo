@@ -86,6 +86,7 @@ vi.mock("react-native", () => {
 });
 vi.mock("../../components/bots/bot-avatar", () => ({ BotAvatar: () => null }));
 vi.mock("../../components/bots/bot-look-picker", () => ({ BotLookPicker: () => null }));
+vi.mock("../../components/bots/spark-morph-avatar", () => ({ SparkHeroAvatar: () => null }));
 vi.mock("../../components/native/sheet-header", () => ({
   cancelHeaderOptions: (_label: string, cancel: () => void) => {
     header.cancel = cancel;

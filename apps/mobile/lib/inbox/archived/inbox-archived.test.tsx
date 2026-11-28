@@ -1,5 +1,13 @@
 // @vitest-environment jsdom
 
+const header = vi.hoisted(() => ({
+  action: null as null | { label: string; onPress: () => void; disabled?: boolean; busy?: boolean },
+}));
+vi.mock("../../navigation/screen-header", () => ({
+  useScreenHeader: ({ action }: { action?: typeof header.action }) => {
+    header.action = action ?? null;
+  },
+}));
 vi.mock("../../api/session", () => ({ currentSessionGeneration: () => 0 }));
 
 import type { Deferred } from "@rakazo/core/test-async";
@@ -127,6 +135,70 @@ vi.mock("./archived-chats", async (importActual) => ({
   loadAllArchivedChats: mocks.loadArchived,
 }));
 vi.mock("../../bots/avatar-life", () => ({ AvatarRow: () => null }));
+vi.mock("../../../components/settings/settings-group", () => ({
+  SettingsGroup: ({
+    label,
+    footer,
+    children,
+  }: {
+    label?: string;
+    footer?: string;
+    children?: ReactNode;
+  }) => (
+    <section>
+      {label ? <h3>{label}</h3> : null}
+      {children}
+      {footer ? <p>{footer}</p> : null}
+    </section>
+  ),
+  SettingsInputRow: ({
+    value,
+    onChangeText,
+    accessibilityLabel,
+    placeholder,
+    onSubmitEditing,
+  }: {
+    value: string;
+    onChangeText: (value: string) => void;
+    accessibilityLabel?: string;
+    placeholder?: string;
+    onSubmitEditing?: () => void;
+  }) => (
+    <input
+      value={value}
+      onChange={(event) => onChangeText(event.target.value)}
+      onKeyDown={(event) => {
+        if (event.key === "Enter") onSubmitEditing?.();
+      }}
+      aria-label={accessibilityLabel}
+      placeholder={placeholder}
+    />
+  ),
+  SettingsRow: ({
+    title,
+    onPress,
+    disabled,
+    accessibilityLabel,
+    trailing,
+  }: {
+    title: string;
+    onPress?: () => void;
+    disabled?: boolean;
+    accessibilityLabel?: string;
+    trailing?: ReactNode;
+  }) => (
+    <div>
+      {onPress ? (
+        <button type="button" onClick={onPress} disabled={disabled} aria-label={accessibilityLabel}>
+          {title}
+        </button>
+      ) : (
+        <span>{title}</span>
+      )}
+      {trailing}
+    </div>
+  ),
+}));
 vi.mock("../../../components/bots/bot-avatar", () => ({ BotAvatar: () => null }));
 vi.mock("../../../components/bots/group-avatar", () => ({ GroupAvatar: () => null }));
 vi.mock("../../../components/inbox/inbox-swipe-row", () => ({ InboxSwipeRow: () => null }));

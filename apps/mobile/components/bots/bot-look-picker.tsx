@@ -10,7 +10,9 @@ import {
 } from "@rakazo/core";
 import type { ReactNode } from "react";
 import { Pressable, Text, View } from "react-native";
+import { hapticSelection } from "../../lib/native/haptics";
 import { useMobileTokens } from "../../lib/native/native";
+import { sparkProductEnabled } from "../../lib/spark/product";
 import { BotAvatar } from "./bot-avatar";
 
 /**
@@ -38,6 +40,9 @@ export function BotLookPicker({
   const tokens = useMobileTokens();
   const { photo, shapeIndex: shape, color, defaultLook } = botLookState(value);
   const labeled = !organicIdentities;
+  // SparkAI draws every look as a halftone character, and an organic body's character is
+  // picked from the bot's id, so those choices would repeat the stored shapes. Each shape once.
+  const spark = sparkProductEnabled();
 
   return (
     <View style={{ gap: 20 }}>
@@ -45,7 +50,7 @@ export function BotLookPicker({
         <View>
           {labeled ? <Label>{t`Shape`}</Label> : null}
           <View accessibilityRole="radiogroup" style={grid}>
-            {organicIdentities ? (
+            {spark ? null : organicIdentities ? (
               organicIdentities.map((organic, index) => (
                 <Choice
                   disabled={disabled}
@@ -71,7 +76,7 @@ export function BotLookPicker({
               <Choice
                 disabled={disabled}
                 key={key}
-                label={t`Shape ${ph({ number: index + 1 + (organicIdentities?.length ?? 0) })}`}
+                label={t`Shape ${ph({ number: index + 1 + (spark ? 0 : (organicIdentities?.length ?? 0)) })}`}
                 selected={shape === index}
                 onPress={() => onChange(botLookWithShape(color, index))}
               >
@@ -149,19 +154,26 @@ function Choice({
   children: ReactNode;
 }) {
   const tokens = useMobileTokens();
+  // SparkAI draws the halftone characters: a round ring and a press that answers, as in its
+  // SwiftUI picker, with a selection tick each time the shape changes.
+  const spark = sparkProductEnabled();
   return (
     <Pressable
       accessibilityRole="radio"
       accessibilityLabel={label}
       accessibilityState={{ checked: selected, disabled }}
       disabled={disabled}
-      onPress={onPress}
-      style={{
+      onPress={() => {
+        if (spark && !selected) hapticSelection();
+        onPress();
+      }}
+      style={({ pressed }) => ({
         padding: 4,
-        borderRadius: 14,
+        borderRadius: spark ? 999 : 14,
         borderWidth: 2,
         borderColor: selected ? tokens.foreground : "transparent",
-      }}
+        transform: [{ scale: spark && pressed ? 0.9 : 1 }],
+      })}
     >
       {children}
     </Pressable>

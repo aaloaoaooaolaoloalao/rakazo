@@ -21,6 +21,14 @@ const { rpc, back, push, replace } = vi.hoisted(() => ({
   push: vi.fn(),
   replace: vi.fn(),
 }));
+const header = vi.hoisted(() => ({
+  action: null as null | { label: string; onPress: () => void; disabled?: boolean; busy?: boolean },
+}));
+vi.mock("../navigation/screen-header", () => ({
+  useScreenHeader: ({ action }: { action?: typeof header.action }) => {
+    header.action = action ?? null;
+  },
+}));
 vi.mock("../layout/side-insets", () => ({ useSideInsets: () => ({}) }));
 vi.mock("../api/session", () => ({ currentSessionGeneration: () => 0 }));
 const space = vi.hoisted(() => ({ id: "space-a" }));
@@ -86,6 +94,71 @@ vi.mock("react-native", () => {
 vi.mock("../native/native", () => ({ native: {}, useMobileTokens: () => ({}) }));
 vi.mock("../native/announce", () => ({ announceToScreenReader: vi.fn() }));
 vi.mock("../../components/native/glass-title", () => ({ glassHeaderOptions: () => ({}) }));
+vi.mock("../../components/bots/group-avatar", () => ({ GroupAvatar: () => null }));
+vi.mock("../../components/settings/settings-group", () => ({
+  SettingsGroup: ({
+    label,
+    footer,
+    children,
+  }: {
+    label?: string;
+    footer?: string;
+    children?: ReactNode;
+  }) => (
+    <section>
+      {label ? <h3>{label}</h3> : null}
+      {children}
+      {footer ? <p>{footer}</p> : null}
+    </section>
+  ),
+  SettingsInputRow: ({
+    value,
+    onChangeText,
+    accessibilityLabel,
+    placeholder,
+    onSubmitEditing,
+  }: {
+    value: string;
+    onChangeText: (value: string) => void;
+    accessibilityLabel?: string;
+    placeholder?: string;
+    onSubmitEditing?: () => void;
+  }) => (
+    <input
+      value={value}
+      onChange={(event) => onChangeText(event.target.value)}
+      onKeyDown={(event) => {
+        if (event.key === "Enter") onSubmitEditing?.();
+      }}
+      aria-label={accessibilityLabel}
+      placeholder={placeholder}
+    />
+  ),
+  SettingsRow: ({
+    title,
+    onPress,
+    disabled,
+    accessibilityLabel,
+    trailing,
+  }: {
+    title: string;
+    onPress?: () => void;
+    disabled?: boolean;
+    accessibilityLabel?: string;
+    trailing?: ReactNode;
+  }) => (
+    <div>
+      {onPress ? (
+        <button type="button" onClick={onPress} disabled={disabled} aria-label={accessibilityLabel}>
+          {title}
+        </button>
+      ) : (
+        <span>{title}</span>
+      )}
+      {trailing}
+    </div>
+  ),
+}));
 vi.mock("../../components/bots/bot-avatar", () => ({ BotAvatar: () => null }));
 vi.mock("../../components/native/native-action-button", () => ({
   NativeActionButton: ({
@@ -165,6 +238,11 @@ function switches() {
   return [...container.querySelectorAll<HTMLInputElement>('input[type="checkbox"]')];
 }
 async function click(label: string) {
+  if (label === "Save") {
+    expect(header.action?.label).toBe("Save");
+    await act(async () => header.action!.onPress());
+    return;
+  }
   const button = [...container.querySelectorAll("button")].find(
     (item) => item.textContent === label,
   );
@@ -371,7 +449,8 @@ it("shows refreshed members while collapsed and adopts an unedited server rename
   await act(async () => switches()[2]!.click());
   expect(switches()).toHaveLength(3);
   await act(async () => switches()[2]!.click());
-  await click("Save");
+  // Nothing differs from the group as read, so Save is not offered and nothing is written.
+  expect(header.action).toBeNull();
   expect(rpc.mock.calls.map(([procedure]) => procedure)).not.toContain("groups/update");
 });
 
@@ -385,7 +464,8 @@ it("does not overwrite a refreshed member order when saving", async () => {
         : [],
   );
   await act(async () => notifyArchivedChatsChanged());
-  await click("Save");
+  // Nothing differs from the group as read, so Save is not offered and nothing is written.
+  expect(header.action).toBeNull();
   expect(rpc.mock.calls.map(([procedure]) => procedure)).not.toContain("groups/update");
 });
 

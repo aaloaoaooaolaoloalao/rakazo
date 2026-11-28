@@ -3,6 +3,7 @@ import { View } from "react-native";
 import { useReducedMotion } from "react-native-reanimated";
 import type { SparkMood, SparkShape } from "../../lib/bots/spark-dot-geometry";
 import { layoutSparkDots, poseAt, sparkPhase } from "../../lib/bots/spark-dot-geometry";
+import { useResolvedAppearance } from "../../lib/native/native";
 
 /**
  * React Native port of web `SparkDotAvatar`: the same halftone shapes, eye holes,
@@ -15,14 +16,18 @@ export const SparkDotAvatar = memo(function SparkDotAvatar({
   size,
   mood,
   seed = "",
+  blink = false,
 }: {
   shape: SparkShape;
   color: string;
   size: number;
   mood: SparkMood;
   seed?: string;
+  /** Closes the eyes now, whatever the pose would do. */
+  blink?: boolean;
 }) {
   const reduce = useReducedMotion() === true;
+  const appearance = useResolvedAppearance();
   const animate = !reduce && mood !== "idle";
   const [time, setTime] = useState(0);
   useEffect(() => {
@@ -37,8 +42,9 @@ export const SparkDotAvatar = memo(function SparkDotAvatar({
     return () => cancelAnimationFrame(frame);
   }, [animate]);
 
-  const pose = poseAt(mood, time + sparkPhase(seed, shape), reduce || mood === "idle");
-  const dots = layoutSparkDots(shape, size, color, pose);
+  const posed = poseAt(mood, time + sparkPhase(seed, shape), reduce || mood === "idle");
+  const pose = blink ? { ...posed, blinking: true } : posed;
+  const dots = layoutSparkDots(shape, size, color, pose, appearance);
   return (
     <View
       accessibilityElementsHidden

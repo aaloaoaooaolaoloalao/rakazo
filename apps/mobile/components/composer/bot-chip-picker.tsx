@@ -7,6 +7,7 @@ import type { MobileBot } from "../../lib/api/mobile-types";
 import { native, useMobileTokens } from "../../lib/native/native";
 import { BotAvatar } from "../bots/bot-avatar";
 import { NativeSymbol } from "../native/native-symbol";
+import { SettingsGroup, SettingsRow } from "../settings/settings-group";
 
 // Lowercasing can create new composable sequences, so normalize again afterward.
 function searchKey(value: string): string {
@@ -41,12 +42,15 @@ export function BotChipPicker({
           flexWrap: "wrap",
           alignItems: "center",
           gap: 8,
-          padding: 12,
-          borderRadius: 11,
-          backgroundColor: native.fill,
+          minHeight: 52,
+          paddingHorizontal: 16,
+          paddingVertical: 10,
+          borderRadius: 16,
+          borderCurve: "continuous",
+          backgroundColor: native.groupedCell,
         }}
       >
-        <Text style={{ color: tokens.mutedForeground, fontSize: 16 }}>{t`To:`}</Text>
+        <Text style={{ color: native.secondaryLabel, fontSize: 17 }}>{t`To:`}</Text>
         {selected.map((id) => {
           const bot = bots.find((item) => item.id === id);
           return bot ? (
@@ -94,45 +98,40 @@ export function BotChipPicker({
             minWidth: 100,
             minHeight: 32,
             color: tokens.foreground,
-            fontSize: 16,
+            fontSize: 17,
             padding: 0,
           }}
         />
       </View>
-      <View style={{ marginTop: 12 }}>
-        {available.map((bot) => (
-          <Pressable
-            key={bot.id}
-            accessibilityRole="button"
-            accessibilityLabel={bot.name}
-            onPress={() => {
-              if (selected.length >= GROUP_MEMBER_MAX) {
-                AccessibilityInfo.announceForAccessibility(
-                  t`Pick ${ph({ min: GROUP_MEMBER_MIN })}–${ph({ max: GROUP_MEMBER_MAX })}`,
-                );
-                return;
+      <View style={{ marginTop: 24 }}>
+        <SettingsGroup>
+          {available.map((bot) => (
+            <SettingsRow
+              key={bot.id}
+              accessibilityLabel={bot.name}
+              title={bot.name}
+              leading={
+                <BotAvatar
+                  color={bot.color}
+                  avatarSet={bot.avatarSet}
+                  identity={bot.id}
+                  size={30}
+                  status={bot.status}
+                />
               }
-              onChange([...selected, bot.id]);
-              setQuery("");
-            }}
-            style={({ pressed }) => ({
-              flexDirection: "row",
-              alignItems: "center",
-              gap: 12,
-              paddingVertical: 12,
-              opacity: pressed ? 0.6 : 1,
-            })}
-          >
-            <BotAvatar
-              color={bot.color}
-              avatarSet={bot.avatarSet}
-              identity={bot.id}
-              size={36}
-              status={bot.status}
+              onPress={() => {
+                if (selected.length >= GROUP_MEMBER_MAX) {
+                  AccessibilityInfo.announceForAccessibility(
+                    t`Pick ${ph({ min: GROUP_MEMBER_MIN })}–${ph({ max: GROUP_MEMBER_MAX })}`,
+                  );
+                  return;
+                }
+                onChange([...selected, bot.id]);
+                setQuery("");
+              }}
             />
-            <Text style={{ color: tokens.foreground, fontSize: 16, flex: 1 }}>{bot.name}</Text>
-          </Pressable>
-        ))}
+          ))}
+        </SettingsGroup>
       </View>
     </View>
   );

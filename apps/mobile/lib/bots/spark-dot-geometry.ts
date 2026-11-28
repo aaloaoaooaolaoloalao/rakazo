@@ -8,10 +8,10 @@ export const SPARK_SHAPES = [
   "tablet",
   "wedge",
   "hex",
-  "cloud",
+  "heart",
   "teardrop",
   "star",
-  "heart",
+  "cloud",
   "diamond",
   "flower",
   "ghost",
@@ -54,11 +54,22 @@ export function poseAt(mood: SparkMood, t: number, reduce: boolean): Pose {
   };
 }
 
+/**
+ * The colour the unlit part of each dot fades toward. Like the SwiftUI app, which drew it with
+ * the text colour: near-black on a light page, white on a dark one so the dim dots stay visible.
+ */
+export type SparkInk = "light" | "dark";
+const INK_RGB: Record<SparkInk, readonly [number, number, number]> = {
+  light: [28, 37, 33],
+  dark: [255, 255, 255],
+};
+
 export function layoutSparkDots(
   shape: SparkShape,
   size: number,
   color: string,
   pose: Pose,
+  ink: SparkInk = "light",
 ): SparkDot[] {
   const cells = size < 18 ? 7 : size < 28 ? 9 : 13;
   const step = size / cells;
@@ -75,7 +86,7 @@ export function layoutSparkDots(
       x: dot.x,
       y: dot.y,
       d: look.radius * 2,
-      color: dotColor(color, look.ink, look.tint),
+      color: dotColor(color, look.ink, look.tint, INK_RGB[ink]),
     });
   }
   return views;
@@ -109,15 +120,20 @@ function shade(
   };
 }
 
-function dotColor(hex: string, ink: number, tint: number): string {
+function dotColor(
+  hex: string,
+  ink: number,
+  tint: number,
+  [inkRed, inkGreen, inkBlue]: readonly [number, number, number],
+): string {
   const raw = hex.replace("#", "");
   const n = Number.parseInt(raw.length >= 6 ? raw.slice(0, 6) : "1084FE", 16);
   const tintAlpha = tint + ink * (1 - tint);
   if (tintAlpha <= 0) return "rgba(0,0,0,0)";
-  const red = (((n >> 16) & 255) * tint + 28 * ink * (1 - tint)) / tintAlpha;
-  const green = (((n >> 8) & 255) * tint + 37 * ink * (1 - tint)) / tintAlpha;
-  const blue = ((n & 255) * tint + 33 * ink * (1 - tint)) / tintAlpha;
-  return `rgba(${red}, ${green}, ${blue}, ${tintAlpha})`;
+  const red = (((n >> 16) & 255) * tint + inkRed * ink * (1 - tint)) / tintAlpha;
+  const green = (((n >> 8) & 255) * tint + inkGreen * ink * (1 - tint)) / tintAlpha;
+  const blue = ((n & 255) * tint + inkBlue * ink * (1 - tint)) / tintAlpha;
+  return `rgba(${Math.round(red)}, ${Math.round(green)}, ${Math.round(blue)}, ${Math.min(1, tintAlpha).toFixed(3)})`;
 }
 
 type Cell = { row: number; col: number; x: number; y: number };
@@ -351,4 +367,110 @@ function hash(value: string): number {
   let n = 0;
   for (let i = 0; i < value.length; i += 1) n = (n * 33 + value.charCodeAt(i)) >>> 0;
   return n;
+}
+
+/** Where the create hero is looking: whole-cell eye steps, as in the SwiftUI app. */
+export type SparkGaze = { dx: number; dy: number; blinking: boolean };
+export const SPARK_GAZE_CENTER: SparkGaze = { dx: 0, dy: 0, blinking: false };
+
+/** The SwiftUI hero's glance and blink loop: each gaze and how long it holds, in ms. */
+export const SPARK_GAZE_ROUTINE: readonly { gaze: SparkGaze; holdMs: number }[] = [
+  { gaze: { dx: 1, dy: 0, blinking: false }, holdMs: 900 },
+  { gaze: { dx: 1, dy: -1, blinking: false }, holdMs: 500 },
+  { gaze: SPARK_GAZE_CENTER, holdMs: 600 },
+  { gaze: { dx: 0, dy: 0, blinking: true }, holdMs: 1100 },
+  { gaze: SPARK_GAZE_CENTER, holdMs: 110 },
+  { gaze: { dx: -1, dy: 0, blinking: false }, holdMs: 700 },
+  { gaze: { dx: -1, dy: 1, blinking: false }, holdMs: 500 },
+  { gaze: SPARK_GAZE_CENTER, holdMs: 600 },
+  { gaze: { dx: 0, dy: -1, blinking: false }, holdMs: 800 },
+  { gaze: SPARK_GAZE_CENTER, holdMs: 500 },
+  { gaze: { dx: 0, dy: 0, blinking: true }, holdMs: 900 },
+  { gaze: SPARK_GAZE_CENTER, holdMs: 110 },
+];
+
+/** One dot of the morphing hero. Its id stays the same across shapes, so it can travel. */
+export type SparkSlot = SparkDot & { id: number; delay: number };
+
+/** Outer dots leave a beat after the core, so the shape ripples outward as it reforms. */
+const SLOT_MAX_STAGGER = 0.08;
+
+/**
+ * The create hero's fixed pool of dots placed on `shape`. Every shape gets the same number of
+ * slots (the largest shape's dot count); extra slots fold into a neighbour at no size, and the
+ * eye holes shrink to nothing, so moving between shapes is each dot travelling to a new cell.
+ */
+export function layoutSparkSlots(
+  shape: SparkShape,
+  size: number,
+  color: string,
+  gaze: SparkGaze,
+  ink: SparkInk = "light",
+): SparkSlot[] {
+  const cells = size < 18 ? 7 : size < 28 ? 9 : 13;
+  const step = size / cells;
+  const count = Math.max(...SPARK_SHAPES.map((each) => grid(each, size, step, cells).length));
+  const half = size / 2;
+  const targets = [...grid(shape, size, step, cells)].sort((a, b) => {
+    const pa = polar(a, half);
+    const pb = polar(b, half);
+    return pa[0] - pb[0] || pa[1] - pb[1];
+  });
+  if (count === 0 || targets.length === 0) return [];
+  const pose: Pose = { yaw: -0.7 + gaze.dx * 0.6, glance: 0, blinking: false, ripple: null };
+  const eyeCols = new Set(eyeColList(cells).map((col) => col + gaze.dx));
+  const rows = eyeRowList(cells);
+  const eyeRows = new Set((gaze.blinking ? rows.slice(-1) : rows).map((row) => row + gaze.dy));
+  const slots: SparkSlot[] = [];
+  let previous = -1;
+  for (let id = 0; id < count; id += 1) {
+    const index = Math.floor((id * targets.length) / count);
+    const dot = targets[index]!;
+    const primary = index !== previous;
+    previous = index;
+    const eye = eyeCols.has(dot.col) && eyeRows.has(dot.row);
+    const look = shade(dot, size, step, cells, pose);
+    const distance = Math.hypot(dot.x - half, dot.y - half) / half;
+    slots.push({
+      id,
+      key: String(id),
+      x: dot.x,
+      y: dot.y,
+      d: primary && !eye ? look.radius * 2 : 0,
+      color: dotColor(color, look.ink, look.tint, INK_RGB[ink]),
+      delay: Math.min(distance, 1) * SLOT_MAX_STAGGER,
+    });
+  }
+  return slots;
+}
+
+/** Angle around the centre, then distance: neighbours in one shape stay neighbours in the next. */
+function polar(cell: Cell, half: number): [number, number] {
+  const dx = cell.x - half;
+  const dy = cell.y - half;
+  return [Math.atan2(dy, dx), Math.hypot(dx, dy)];
+}
+
+/**
+ * Where each dot starts the opening: a stable random spot spread over the whole avatar, tiny and
+ * faint, so the gather reads as the bot pulling itself together. Outer dots arrive last.
+ */
+export function sparkScatter(id: number, size: number, color: string, ink: SparkInk = "light") {
+  const rand = (salt: number) => {
+    let x = (Math.imul(id, 2654435761) + Math.imul(salt, 40503)) >>> 0;
+    x = (x ^ (x >>> 13)) >>> 0;
+    x = Math.imul(x, 0x5bd1e995) >>> 0;
+    x = (x ^ (x >>> 15)) >>> 0;
+    return (x % 10000) / 10000;
+  };
+  const angle = rand(1) * Math.PI * 2;
+  const distance = 0.15 + rand(2) * 0.85;
+  const reach = size * 0.48;
+  return {
+    x: size / 2 + Math.cos(angle) * distance * reach,
+    y: size / 2 + Math.sin(angle) * distance * reach,
+    d: 1 + rand(3) * 1.5,
+    delay: Math.min(0.32, distance * 0.22 + rand(5) * 0.1),
+    color: dotColor(color, 0.22, rand(4) * 0.35, INK_RGB[ink]),
+  };
 }

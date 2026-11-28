@@ -88,6 +88,8 @@ export function useInboxHeader({
           // Creating is a different kind of action from the ways of looking at chats beside it.
           sharesBackground: false,
           menu: {
+            // Not a choice to remember: without this iOS ticks the item picked last time.
+            multiselectable: true,
             items: visibleCreateMenuItems().map(({ id, label, sfSymbol }) => ({
               type: "action" as const,
               label: i18n._(label),

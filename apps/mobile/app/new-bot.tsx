@@ -3,16 +3,19 @@ import type { BotAvatarSet } from "@rakazo/contracts";
 import { BOT_NAME_MAX_LENGTH, resolveBotAvatarSet } from "@rakazo/contracts";
 import {
   botLookState,
+  botLookWithShape,
   newBotLook,
   newBotLookInput,
   newBotPreviewIdentity,
   ORGANIC_PREVIEW_IDENTITIES,
+  SHIPPED_BOT_AVATAR_SHAPE_KEYS,
 } from "@rakazo/core";
 import { Stack, useLocalSearchParams, useRouter } from "expo-router";
 import { useEffect, useRef, useState } from "react";
 import { AccessibilityInfo, BackHandler, ScrollView, Text, TextInput, View } from "react-native";
 import { BotAvatar } from "../components/bots/bot-avatar";
 import { BotLookPicker } from "../components/bots/bot-look-picker";
+import { SparkHeroAvatar } from "../components/bots/spark-morph-avatar";
 import { NativeActionButton } from "../components/native/native-action-button";
 import { cancelHeaderOptions } from "../components/native/sheet-header";
 import { selectedSpaceId } from "../lib/api/api";
@@ -24,6 +27,7 @@ import { useSideInsets } from "../lib/layout/side-insets";
 import { native, useMobileTokens } from "../lib/native/native";
 import { accountRpcQuery, useSave } from "../lib/query/query";
 import { useScreenQuery } from "../lib/query/screen-query";
+import { sparkProductEnabled } from "../lib/spark/product";
 
 type NewBotInput = Parameters<typeof createInboxBot>[0]["input"];
 
@@ -40,7 +44,13 @@ export default function NewBot() {
   const currentSet = meRead.data ? resolveBotAvatarSet(meRead.data.botAvatarSet) : undefined;
   const avatarSet = currentSet ?? resolveBotAvatarSet(params.avatarSet);
   const [name, setName] = useState("");
-  const [look, setLook] = useState(newBotLook);
+  // SparkAI starts on one of the stored shapes, so the bot is saved looking like its preview.
+  const [look, setLook] = useState(() => {
+    const fresh = newBotLook();
+    if (!sparkProductEnabled()) return fresh;
+    const shape = Math.floor(Math.random() * SHIPPED_BOT_AVATAR_SHAPE_KEYS.length);
+    return { ...fresh, color: botLookWithShape(fresh.color, shape) };
+  });
   // Once the screen is gone, a creation still in flight must not open the chat.
   const gone = useRef(false);
   // Set with the Create tap: the header's Cancel can still be the one rendered before it.
@@ -148,7 +158,11 @@ export default function NewBot() {
         keyboardShouldPersistTaps="handled"
       >
         <View style={{ alignItems: "center", marginTop: 8, marginBottom: 24 }}>
-          <BotAvatar color={look.color} identity={identity} avatarSet={avatarSet} size={96} />
+          {sparkProductEnabled() ? (
+            <SparkHeroAvatar color={look.color} identity={identity} size={96} />
+          ) : (
+            <BotAvatar color={look.color} identity={identity} avatarSet={avatarSet} size={96} />
+          )}
         </View>
         <TextInput
           autoFocus
