@@ -545,4 +545,6 @@ export const PRODUCT_UI = {
   hideMeetings: true,
   /** Hide organization and Space management. Mobile reads this; web does not. */
   hideOrganizations: true,
+  /** Hide the Activity view; the home header offers Integrations in its place. Mobile reads this; web does not. */
+  hideActivity: true,
 } as const;

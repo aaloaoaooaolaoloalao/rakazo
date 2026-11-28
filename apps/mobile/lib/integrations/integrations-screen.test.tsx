@@ -52,6 +52,7 @@ vi.mock("../api/api", () => ({
 }));
 vi.mock("../api/session", () => ({ currentSessionGeneration: () => 1 }));
 vi.mock("expo-web-browser", () => ({ openAuthSessionAsync: state.authSession }));
+vi.mock("../native/haptics", () => ({ hapticSelection: vi.fn() }));
 vi.mock("../../components/integrations/plugin-icon", () => ({
   PluginIcon: ({ name }: { name: string }) => <span>{name[0]}</span>,
 }));

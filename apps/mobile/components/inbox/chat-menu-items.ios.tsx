@@ -2,6 +2,7 @@ import { Button, Divider, Menu, Toggle } from "@expo/ui/swift-ui";
 import { labelStyle, tint } from "@expo/ui/swift-ui/modifiers";
 import { useLingui } from "@lingui/react/macro";
 import { SNOOZE_PRESETS, snoozePresetTime } from "@rakazo/core";
+import { Link } from "expo-router";
 import { PlatformColor } from "react-native";
 import type { InboxRowAction } from "../../lib/inbox/inbox-swipe";
 import { INBOX_ROW_ACTIONS, inboxRowActions, SNOOZE_LABELS } from "../../lib/inbox/inbox-swipe";
@@ -111,4 +112,98 @@ export function ChatMenuItems({
       {button("delete")}
     </>
   );
+}
+
+/**
+ * The same items as `ChatMenuItems`, as a link's UIKit menu: one that lifts only the view it is
+ * on, as a pinned tile needs inside a native list row. The menu is called, not rendered, because
+ * the link finds its menu among its direct children.
+ */
+export function useChatLinkMenu() {
+  const { t, i18n } = useLingui();
+  return ({
+    unread,
+    pinned,
+    notifyOnFinish,
+    sectionId,
+    sections,
+    onAction,
+    onOrganize,
+    onEditSection,
+    snoozed,
+    onSnooze,
+  }: ChatMenuProps) => {
+    const { leading } = inboxRowActions({ unread, pinned });
+    const action = (name: InboxRowAction) => (
+      <Link.MenuAction
+        key={name}
+        title={i18n._(INBOX_ROW_ACTIONS[name].label)}
+        icon={INBOX_ROW_ACTIONS[name].systemImage}
+        destructive={name === "delete"}
+        onPress={() => onAction(name)}
+      />
+    );
+    function moveTo(id: string | null) {
+      if (id !== (sectionId ?? null)) onOrganize({ sectionId: id });
+    }
+    return (
+      <Link.Menu>
+        {action(leading)}
+        {action(pinned ? "unpin" : "pin")}
+        {notifyOnFinish === undefined ? null : (
+          <Link.MenuAction
+            title={notifyOnFinish ? t`Silence notifications` : t`Resume notifications`}
+            icon={notifyOnFinish ? "bell.slash" : "bell"}
+            onPress={() => onOrganize({ notifyOnFinish: !notifyOnFinish })}
+          />
+        )}
+        {!onSnooze ? null : snoozed ? (
+          <Link.MenuAction title={t`Unsnooze`} icon="moon.zzz" onPress={() => onSnooze(null)} />
+        ) : (
+          <Link.Menu title={t`Snooze`} icon="moon.zzz">
+            {SNOOZE_PRESETS.map((preset) => (
+              <Link.MenuAction
+                key={preset}
+                title={i18n._(SNOOZE_LABELS[preset])}
+                onPress={() => onSnooze(snoozePresetTime(preset, new Date()).toISOString())}
+              />
+            ))}
+          </Link.Menu>
+        )}
+        <Link.Menu title={t`Move to`} icon="folder">
+          <Link.Menu inline>
+            {sections.map((section) => (
+              <Link.MenuAction
+                key={section.id}
+                title={section.name}
+                isOn={sectionId === section.id}
+                onPress={() => moveTo(section.id)}
+              />
+            ))}
+            <Link.MenuAction
+              title={t`Unassigned`}
+              isOn={sectionId == null}
+              onPress={() => moveTo(null)}
+            />
+          </Link.Menu>
+          <Link.Menu inline>
+            <Link.MenuAction
+              title={t`New section`}
+              icon="folder.badge.plus"
+              onPress={() => onEditSection("create")}
+            />
+            {sections.some((section) => section.id === sectionId) ? (
+              <Link.MenuAction
+                title={t`Rename section`}
+                icon="pencil"
+                onPress={() => onEditSection("rename")}
+              />
+            ) : null}
+          </Link.Menu>
+        </Link.Menu>
+        {action("archive")}
+        {action("delete")}
+      </Link.Menu>
+    );
+  };
 }

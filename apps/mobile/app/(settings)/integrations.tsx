@@ -39,6 +39,7 @@ import {
   createIntegrationsStyles,
   LOGO_SIZE,
 } from "../../components/integrations/integrations-styles";
+import { SparkConnections } from "../../components/integrations/spark-connections";
 import { useConnectionActions } from "../../components/integrations/use-connection-actions";
 import { useCustomSourceForm } from "../../components/integrations/use-custom-source-form";
 import { NativeActionButton } from "../../components/native/native-action-button";
@@ -60,6 +61,7 @@ import { useHeaderSearch, useScreenHeader } from "../../lib/navigation/screen-he
 import { openExternalUrl } from "../../lib/platform/open-url";
 import { queryClient, rpcQuery } from "../../lib/query/query";
 import { useScreenQuery } from "../../lib/query/screen-query";
+import { sparkProductEnabled } from "../../lib/spark/product";
 
 export default function Integrations() {
   const sideInsets = useSideInsets();
@@ -69,6 +71,7 @@ export default function Integrations() {
   const styles = useThemedStyles(createIntegrationsStyles);
   const { t } = useLingui();
   const { width } = useWindowDimensions();
+  const spark = sparkProductEnabled();
   const catalogColumns = width >= 480 ? 2 : 1;
   const [query, setQuery] = useState("");
   const [visibleCount, setVisibleCount] = useState(CONNECTION_CATALOG_PAGE_SIZE);
@@ -114,8 +117,8 @@ export default function Integrations() {
   const connectionsQuery = useScreenQuery(connectionsRead);
   const serversQuery = useScreenQuery(serversRead);
   const installsQuery = useScreenQuery(installsRead);
-  const presetsQuery = useScreenQuery(presetsRead);
-  const marketplaceQuery = useScreenQuery(marketplaceRead);
+  const presetsQuery = useScreenQuery(presetsRead, { enabled: !spark });
+  const marketplaceQuery = useScreenQuery(marketplaceRead, { enabled: !spark });
   const toolsQuery = useScreenQuery(toolsRead, { enabled: Boolean(detailKey) });
   const screenQueries = [
     catalogQuery,
@@ -316,6 +319,11 @@ export default function Integrations() {
   }
 
   function openDetail(item: ConnectionCatalogItem) {
+    // SparkAI gives each app its own page in the sheet's stack.
+    if (spark) {
+      router.push({ pathname: "/connection", params: { app: catalogItemKey(item) } });
+      return;
+    }
     resetFailures();
     setOpenApp({ connectorId: item.connectorId, slug: item.slug, spaceId: selectedSpaceId() });
   }
@@ -411,15 +419,88 @@ export default function Integrations() {
   });
 
   useScreenHeader({
-    action: {
-      kind: "menu",
-      label: t`Add custom`,
-      symbol: "plus",
-      items: addOptions.map(({ id, label }) => ({ id, label })),
-      onSelect: (id) => startAdding(addOptions.find((option) => option.id === id)),
-      Fallback: AddCustomMenu,
-    },
+    action: spark
+      ? null
+      : {
+          kind: "menu",
+          label: t`Add custom`,
+          symbol: "plus",
+          items: addOptions.map(({ id, label }) => ({ id, label })),
+          onSelect: (id) => startAdding(addOptions.find((option) => option.id === id)),
+          Fallback: AddCustomMenu,
+        },
   });
+
+  const errorView = catalogError ? (
+    <View style={styles.catalogStack}>
+      <Text style={styles.error}>{catalogError}</Text>
+      <NativeActionButton label={t`Retry`} fill={false} onPress={retry} prominence="secondary" />
+    </View>
+  ) : null;
+
+  const detailView = detailItem ? (
+    <IntegrationDetail
+      item={detailItem}
+      accounts={catalogItemAccounts(connections, detailItem)}
+      pending={pending}
+      labelDrafts={labelDrafts}
+      setLabelDrafts={setLabelDrafts}
+      tools={tools}
+      toolsLoading={toolsQuery.isLoading}
+      toolsFailed={toolsFailed}
+      onBack={() => closeDetail()}
+      onUninstall={() => uninstall(detailItem)}
+      onRename={renameAccount}
+      onRevoke={revokeAccount}
+      onConnect={() => connect(detailItem)}
+      onOpenChatApp={() => router.push("/messaging")}
+    />
+  ) : null;
+
+  const loadingView =
+    !catalogReady && !catalogError ? (
+      <View
+        testID="integrations-loading"
+        accessibilityElementsHidden
+        importantForAccessibility="no-hide-descendants"
+        style={catalogColumns === 2 ? styles.catalogGrid : styles.catalogStack}
+      >
+        {Array.from({ length: 8 }, (_, index) => (
+          <View key={index} style={[styles.row, catalogColumns === 2 ? styles.catalogCell : null]}>
+            <View style={styles.logoPlaceholder} />
+            <View style={styles.grow}>
+              <View style={styles.titlePlaceholder} />
+            </View>
+            <View style={styles.pillPlaceholder} />
+          </View>
+        ))}
+      </View>
+    ) : null;
+
+  function sparkList() {
+    const featured = filtering
+      ? []
+      : featuredTiles.flatMap(({ item, missing }) =>
+          item && !missing && !itemConnected(item) ? [item] : [],
+        );
+    const featuredKeys = new Set(featured.map(catalogItemKey));
+    const rest = (
+      filtering ? catalogApps.filter((item) => !itemConnected(item)) : browseApps
+    ).filter((item) => !featuredKeys.has(catalogItemKey(item)));
+    return (
+      <SparkConnections
+        connected={filtering ? catalogApps.filter(itemConnected) : connectedCatalog}
+        featured={featured}
+        rest={rest.slice(0, visibleCount)}
+        restTotal={rest.length}
+        searching={filtering}
+        mcpServers={standaloneServers}
+        pending={pending}
+        onOpen={openDetail}
+        onShowMore={() => setVisibleCount((count) => count + CONNECTION_CATALOG_PAGE_SIZE)}
+      />
+    );
+  }
 
   return (
     <SafeAreaView edges={["bottom"]} style={styles.screen}>
@@ -429,7 +510,12 @@ export default function Integrations() {
         contentInsetAdjustmentBehavior="automatic"
         keyboardShouldPersistTaps="handled"
       >
-        {adding ? (
+        {spark ? (
+          <>
+            {errorView}
+            {catalogReady ? sparkList() : loadingView}
+          </>
+        ) : adding ? (
           <AddCustomForm
             {...formProps}
             adding={adding}
@@ -503,58 +589,13 @@ export default function Integrations() {
               </View>
             ) : null}
 
-            {catalogError ? (
-              <View style={styles.catalogStack}>
-                <Text style={styles.error}>{catalogError}</Text>
-                <NativeActionButton
-                  label={t`Retry`}
-                  fill={false}
-                  onPress={retry}
-                  prominence="secondary"
-                />
-              </View>
-            ) : null}
+            {errorView}
 
             {detailItem ? (
-              <IntegrationDetail
-                item={detailItem}
-                accounts={catalogItemAccounts(connections, detailItem)}
-                pending={pending}
-                labelDrafts={labelDrafts}
-                setLabelDrafts={setLabelDrafts}
-                tools={tools}
-                toolsLoading={toolsQuery.isLoading}
-                toolsFailed={toolsFailed}
-                onBack={() => closeDetail()}
-                onUninstall={() => uninstall(detailItem)}
-                onRename={renameAccount}
-                onRevoke={revokeAccount}
-                onConnect={() => connect(detailItem)}
-                onOpenChatApp={() => router.push("/messaging")}
-              />
+              detailView
             ) : (
               <>
-                {!catalogReady && !catalogError ? (
-                  <View
-                    testID="integrations-loading"
-                    accessibilityElementsHidden
-                    importantForAccessibility="no-hide-descendants"
-                    style={catalogColumns === 2 ? styles.catalogGrid : styles.catalogStack}
-                  >
-                    {Array.from({ length: 8 }, (_, index) => (
-                      <View
-                        key={index}
-                        style={[styles.row, catalogColumns === 2 ? styles.catalogCell : null]}
-                      >
-                        <View style={styles.logoPlaceholder} />
-                        <View style={styles.grow}>
-                          <View style={styles.titlePlaceholder} />
-                        </View>
-                        <View style={styles.pillPlaceholder} />
-                      </View>
-                    ))}
-                  </View>
-                ) : null}
+                {loadingView}
 
                 {catalogsReady && catalog.length === 0 && plugins.length === 0 && !filtering ? (
                   <Text

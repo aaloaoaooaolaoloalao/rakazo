@@ -28,12 +28,14 @@ import { previewSnippet } from "../../lib/messages/preview";
 import { native, useThemedStyles } from "../../lib/native/native";
 import { BotAvatar } from "../bots/bot-avatar";
 import { GroupAvatar } from "../bots/group-avatar";
+import { NativeListRowContext } from "../native/native-list-row";
 import { NativeSymbol } from "../native/native-symbol";
 import { DragSafePressable } from "../ui/drag-safe-pressable";
 import type { BotOrganizationUpdate } from "./bot-organize-modal";
 import { ChatTileMenu } from "./chat-tile-menu";
-import { createInboxStyles, INBOX_ROW } from "./inbox-styles";
+import { createInboxStyles, INBOX_ROW, PINNED_TILE_GAP } from "./inbox-styles";
 import { InboxSwipeRow } from "./inbox-swipe-row";
+import { PinnedTileGrid } from "./pinned-tile-grid";
 
 export const FALLBACK_COLOR = botColors[3];
 
@@ -249,15 +251,17 @@ export const PinnedTiles = memo(function PinnedTiles({
   const styles = useThemedStyles(createInboxStyles);
   const selectedId = useContext(SelectedChatContext);
   // Three tiles share the row and each avatar fills its tile, up to a cap for wide panes.
-  const [rowWidth, setRowWidth] = useState(0);
-  const tileWidth = rowWidth > 0 ? Math.floor((rowWidth - 16) / 3) : undefined;
+  const [measuredWidth, setRowWidth] = useState(0);
+  // A native list row is laid out at the width the list gives it, before any layout here.
+  const rowWidth = useContext(NativeListRowContext)?.width ?? measuredWidth;
+  const tileWidth =
+    rowWidth > 0 ? Math.floor((rowWidth - 16 - 2 * PINNED_TILE_GAP) / 3) : undefined;
   const avatarSize = tileWidth ? Math.min(PINNED_AVATAR_MAX, tileWidth - 12) : PINNED_AVATAR_MAX;
   return (
-    <View
+    <PinnedTileGrid
       style={styles.pinnedTiles}
-      onLayout={(event) => setRowWidth(event.nativeEvent.layout.width)}
-    >
-      {chats.map((chat) => {
+      onWidth={setRowWidth}
+      tiles={chats.map((chat) => {
         const target =
           chat.kind === "bot"
             ? { kind: chat.kind, chat: chat.bot }
@@ -275,6 +279,19 @@ export const PinnedTiles = memo(function PinnedTiles({
           <ChatTileMenu
             key={`${chat.kind}-${id}`}
             width={tileWidth}
+            href={
+              chat.kind === "bot"
+                ? // The thread switches to the bot's space itself, as opening it from a preview needs.
+                  {
+                    pathname: "/thread",
+                    params: {
+                      botId: id,
+                      name,
+                      ...(chat.bot.spaceId && { spaceId: chat.bot.spaceId }),
+                    },
+                  }
+                : { pathname: "/group-thread", params: { groupId: id, name } }
+            }
             unread={target.chat.unread}
             pinned
             notifyOnFinish={chat.kind === "bot" ? chat.bot.notifyOnFinish : undefined}
@@ -339,7 +356,7 @@ export const PinnedTiles = memo(function PinnedTiles({
           </ChatTileMenu>
         );
       })}
-    </View>
+    />
   );
 });
 function PinnedName({ chat, name }: { chat: PinnedChat; name: string }) {

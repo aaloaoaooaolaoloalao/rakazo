@@ -41,3 +41,11 @@ it("handles long whitespace values with no priority suffix", () => {
   catalogSvgStyles(root);
   expect(root.props.style).toEqual({ strokeWidth: value });
 });
+
+it("turns percentage gradient stop colors into ones the renderer accepts", () => {
+  const root = node({ stopColor: "rgb(12.54902%,65.490196%,98.039216%)" });
+  root.props.fill = "rgb(0%, 100%, 50%)";
+  catalogSvgStyles(root);
+  expect(root.props.style).toEqual({ stopColor: "rgb(32,167,250)" });
+  expect(root.props.fill).toBe("rgb(0,255,127)");
+});

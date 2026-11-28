@@ -63,6 +63,7 @@ vi.mock("../native/native", () => ({
   useResolvedAppearance: () => "light",
 }));
 vi.mock("../native/haptics", () => ({ hapticSelection: vi.fn() }));
+vi.mock("expo-router", () => ({ Link: { Menu: () => null, MenuAction: () => null } }));
 vi.mock("react-native-gesture-handler", () => {
   const pan = {
     activeOffsetX: () => pan,

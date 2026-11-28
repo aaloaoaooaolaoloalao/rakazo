@@ -113,7 +113,7 @@ import {
   subscribeOrganizationSwitch,
   useOrganizations,
 } from "../lib/spaces/organizations";
-import { showOrganizations } from "../lib/spark/product";
+import { showActivity as activityAvailable, showOrganizations } from "../lib/spark/product";
 import { confirmUnsentSendLoss } from "../lib/thread/send/unsent-send-warning";
 
 /** A row counts as on screen as soon as any of it shows. */
@@ -216,7 +216,7 @@ function Home({ embedded, onSelectSpace, onShareSelect }: InboxPaneProps & { emb
 
   useEffect(() => {
     void loadActivityMode().then((on) => {
-      setActivityMode(on);
+      setActivityMode(on && activityAvailable());
       setActivityModeLoaded(true);
     });
   }, []);
@@ -462,7 +462,8 @@ function Home({ embedded, onSelectSpace, onShareSelect }: InboxPaneProps & { emb
   // Liquid Glass uses the native bar: glass bar items and a native menu.
   // The list beside a chat and the share picker have no navigation bar of their own.
   const nativeHeader = iosAtLeast(26) && !embedded && !onShareSelect;
-  const showToolbar = nativeHeader && ready && hasSession;
+  // Without Activity, account and integrations move up into the header.
+  const showToolbar = nativeHeader && ready && hasSession && activityAvailable();
   const topBarInset = useTopBarInset();
   const listRef = useRef<FlatList<InboxItem>>(null);
   const jumpSignals = useSyncExternalStore(
@@ -883,7 +884,8 @@ function Home({ embedded, onSelectSpace, onShareSelect }: InboxPaneProps & { emb
                   renderItem={renderItem}
                   isNativeRow={(item) =>
                     item.type === "heading" ||
-                    (!onShareSelect && (item.type === "bot" || item.type === "group"))
+                    (!onShareSelect &&
+                      (item.type === "bot" || item.type === "group" || item.type === "pinned"))
                   }
                   header={hasListHeader ? listHeader : null}
                   empty={listEmpty}
