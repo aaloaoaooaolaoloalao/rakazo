@@ -1,5 +1,5 @@
 import type { ReactNode } from "react";
-import { Component, useEffect, useEffectEvent, useMemo, useState } from "react";
+import { Component, useEffect, useEffectEvent, useState } from "react";
 import { Image, StyleSheet, Text, View } from "react-native";
 import { fetchText, parse, SvgAst } from "react-native-svg";
 import { catalogSvgStyles, MAX_CATALOG_SVG_LENGTH } from "../../lib/integrations/catalog-svg";
@@ -55,6 +55,29 @@ export function ConnectorIcon({
   );
 }
 
+type CatalogArt = NonNullable<ReturnType<typeof parse>>;
+
+/** Each logo is read and parsed once per launch: lists mount the same artwork again and again. */
+const artwork = new Map<string, Promise<CatalogArt | null>>();
+
+function loadArtwork(uri: string) {
+  let art = artwork.get(uri);
+  if (!art) {
+    art = fetchText(uri).then((xml) =>
+      xml && xml.length <= MAX_CATALOG_SVG_LENGTH ? parse(xml, catalogSvgStyles) : null,
+    );
+    // A failed read is tried again on a later mount rather than remembered.
+    art.then(
+      (value) => {
+        if (!value) artwork.delete(uri);
+      },
+      () => artwork.delete(uri),
+    );
+    artwork.set(uri, art);
+  }
+  return art;
+}
+
 /** Read artwork before handing CSS lengths to the native renderer. */
 function CatalogSvg({
   uri,
@@ -66,15 +89,15 @@ function CatalogSvg({
   width: number;
   height: number;
 }) {
-  const [xml, setXml] = useState<string | null>(null);
+  const [ast, setAst] = useState<CatalogArt | null>(null);
   const fail = useEffectEvent(onError);
   useEffect(() => {
     let current = true;
-    void fetchText(uri).then(
+    loadArtwork(uri).then(
       (value) => {
         if (!current) return;
-        if (!value || value.length > MAX_CATALOG_SVG_LENGTH) fail();
-        else setXml(value);
+        if (value) setAst(value);
+        else fail();
       },
       () => {
         if (current) fail();
@@ -84,7 +107,6 @@ function CatalogSvg({
       current = false;
     };
   }, [uri]);
-  const ast = useMemo(() => (xml === null ? null : parse(xml, catalogSvgStyles)), [xml]);
   return ast ? <SvgAst ast={ast} override={size} /> : null;
 }
 

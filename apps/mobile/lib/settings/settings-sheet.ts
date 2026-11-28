@@ -27,6 +27,7 @@ const settingsScreens = new Set([
   "bot-templates",
   "change-password",
   "computers",
+  "connection",
   "general",
   "integration-setup",
   "integrations",
