@@ -161,6 +161,14 @@ export function createInboxStyles() {
       minWidth: 0,
       gap: 2,
     },
+    // Sits at the bottom of the row: the row's vertical padding below the text.
+    rowDivider: {
+      position: "absolute",
+      start: 0,
+      bottom: -10,
+      height: StyleSheet.hairlineWidth * 2,
+      backgroundColor: native.separator,
+    },
     rowTop: {
       flexDirection: "row",
       alignItems: "flex-start",

@@ -16,12 +16,15 @@ export const SparkDotAvatar = memo(function SparkDotAvatar({
   size,
   mood,
   seed = "",
+  blink = false,
 }: {
   shape: SparkShape;
   color: string;
   size: number;
   mood: SparkMood;
   seed?: string;
+  /** Closes the eyes now, whatever the pose would do. */
+  blink?: boolean;
 }) {
   const reduce = useReducedMotion() === true;
   const appearance = useResolvedAppearance();
@@ -39,7 +42,8 @@ export const SparkDotAvatar = memo(function SparkDotAvatar({
     return () => cancelAnimationFrame(frame);
   }, [animate]);
 
-  const pose = poseAt(mood, time + sparkPhase(seed, shape), reduce || mood === "idle");
+  const posed = poseAt(mood, time + sparkPhase(seed, shape), reduce || mood === "idle");
+  const pose = blink ? { ...posed, blinking: true } : posed;
   const dots = layoutSparkDots(shape, size, color, pose, appearance);
   return (
     <View

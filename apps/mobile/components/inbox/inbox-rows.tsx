@@ -26,6 +26,7 @@ import type { InboxChatKind, InboxRowAction } from "../../lib/inbox/inbox-swipe"
 import { INBOX_ROW_ACTIONS, inboxRowActionList } from "../../lib/inbox/inbox-swipe";
 import { previewSnippet } from "../../lib/messages/preview";
 import { native, useThemedStyles } from "../../lib/native/native";
+import { sparkProductEnabled } from "../../lib/spark/product";
 import { BotAvatar } from "../bots/bot-avatar";
 import { GroupAvatar } from "../bots/group-avatar";
 import { NativeListRowContext } from "../native/native-list-row";
@@ -33,7 +34,7 @@ import { NativeSymbol } from "../native/native-symbol";
 import { DragSafePressable } from "../ui/drag-safe-pressable";
 import type { BotOrganizationUpdate } from "./bot-organize-modal";
 import { ChatTileMenu } from "./chat-tile-menu";
-import { createInboxStyles, INBOX_ROW, PINNED_TILE_GAP } from "./inbox-styles";
+import { COMPACT_INBOX_ROW, createInboxStyles, INBOX_ROW, PINNED_TILE_GAP } from "./inbox-styles";
 import { InboxSwipeRow } from "./inbox-swipe-row";
 import { PinnedTileGrid } from "./pinned-tile-grid";
 
@@ -124,6 +125,17 @@ export function ConversationRow({
         <Text style={[styles.preview, unread && styles.unreadPreview]} numberOfLines={1}>
           {preview}
         </Text>
+        {sparkProductEnabled() && !selected ? (
+          // SparkAI divides chats with a line from the text to the edge, as iOS lists do.
+          <View
+            accessibilityElementsHidden
+            importantForAccessibility="no-hide-descendants"
+            style={[
+              styles.rowDivider,
+              { end: -(compact ? COMPACT_INBOX_ROW.padding : INBOX_ROW.padding) },
+            ]}
+          />
+        ) : null}
       </View>
     </DragSafePressable>
   );
