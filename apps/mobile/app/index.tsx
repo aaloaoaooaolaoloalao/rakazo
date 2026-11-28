@@ -883,7 +883,8 @@ function Home({ embedded, onSelectSpace, onShareSelect }: InboxPaneProps & { emb
                   renderItem={renderItem}
                   isNativeRow={(item) =>
                     item.type === "heading" ||
-                    (!onShareSelect && (item.type === "bot" || item.type === "group"))
+                    (!onShareSelect &&
+                      (item.type === "bot" || item.type === "group" || item.type === "pinned"))
                   }
                   header={hasListHeader ? listHeader : null}
                   empty={listEmpty}

@@ -7,6 +7,8 @@ export const INBOX_ROW = { padding: 16, gap: 12, avatarSize: 62 };
 export const COMPACT_INBOX_ROW = { padding: 12, gap: 10 };
 // Drops the Android create menu below the header pill; the trigger's negative margin keeps the layout.
 export const CREATE_MENU_GAP = 6;
+/** Room between pinned tiles side by side. */
+export const PINNED_TILE_GAP = 12;
 
 export function createInboxStyles() {
   const tokens = mobileTokens();
@@ -124,6 +126,7 @@ export function createInboxStyles() {
       flexWrap: "wrap",
       // A short last row sits centred under the full one.
       justifyContent: "center",
+      columnGap: PINNED_TILE_GAP,
       paddingHorizontal: 8,
       paddingTop: 12,
       paddingBottom: 12,
