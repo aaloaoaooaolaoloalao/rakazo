@@ -35,8 +35,10 @@ Set in `docker-compose.override.yml` on the server (not all are in `docker-compo
 
 | Variable | Purpose |
 |----------|---------|
-| `DEFAULT_MODEL_PROVIDER` | e.g. `mistral` |
-| `DEFAULT_MODEL_ID` | e.g. `mistral-medium-latest` |
+| `DEFAULT_MODEL_PROVIDER` | e.g. `mistral` (default) or `anthropic` after adding a direct API key |
+| `DEFAULT_MODEL_ID` | e.g. `zai-glm-5-3-flash` (default) or `claude-sonnet-5-5` for Anthropic |
+| `ANTHROPIC_API_KEY` | Direct Anthropic API key (not OpenRouter). Omit to keep GLM via Mistral. |
+| `MISTRAL_API_KEY` | Required for the default GLM deployment provider. |
 | `AUTO_PROVISION_NEW_USERS` | `true` — provision on signup |
 | `AUTO_PROVISION_DEFAULT_BOT_NAME` | Default bot display name (Hebrew) |
 | `AUTO_PROVISION_MAX_COMPUTERS_PER_USER` | Cap for auto-provision (min with sandbox cap) |
@@ -64,6 +66,7 @@ Copies without secrets live in this repo under `deploy/`.
 
 - **GHCR push** needs `write:packages` (or CI) to publish images; production uses **local `docker build`** + `pull_policy: never`.
 - Map **`DEFAULT_MODEL_*`** in `docker-compose.images.yml` for cleaner defaults.
+- **Anthropic agents:** set `ANTHROPIC_API_KEY`, then `DEFAULT_MODEL_PROVIDER=anthropic` and `DEFAULT_MODEL_ID=claude-sonnet-5-5` (or another catalog id). Roll back to `DEFAULT_MODEL_PROVIDER=mistral` and `DEFAULT_MODEL_ID=zai-glm-5-3-flash` and remove or unset `ANTHROPIC_API_KEY` if switching back. Prompt caching is on by default for Anthropic (`short` retention); usage rows record `cacheReadTokens` / `cacheWriteTokens` separately from uncached `inputTokens` for per-user limits.
 - **push notifications**, **production domain** (replace sslip.io). Sign in with Apple is wired in Better Auth; set the `APPLE_*` env vars on **api** and redeploy after merging.
 - iOS client: separate repo [sparkai-ios](https://github.com/aaloaoaooaolaoloalao/sparkai-ios).
 
